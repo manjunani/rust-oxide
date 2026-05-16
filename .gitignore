@@ -1,0 +1,46 @@
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo lock for libraries (keep for binaries)
+# Cargo.lock is kept since the workspace has a binary
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# SQLite databases
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# WASM build artifacts
+*.wasm
+pkg/
+wasm-pack.log
+
+# OS
+Thumbs.db
+
+# Misc
+node_modules/
+dist/
+build/
