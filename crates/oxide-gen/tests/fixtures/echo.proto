@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package demo;
+
+// A trivial echo service used as an oxide-gen test fixture.
+service Echo {
+  // Echo a single message back to the caller.
+  rpc Say (SayRequest) returns (SayResponse);
+  // Echo the same message many times.
+  rpc SayMany (SayRequest) returns (SayResponse);
+}
+
+message SayRequest {
+  string text = 1;
+  int32 repeat = 2;
+}
+
+message SayResponse {
+  string echo = 1;
+  repeated string history = 2;
+}

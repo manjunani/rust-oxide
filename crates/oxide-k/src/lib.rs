@@ -26,6 +26,7 @@
 pub mod bus;
 pub mod error;
 pub mod kernel;
+pub mod manifest;
 pub mod module;
 pub mod registry;
 

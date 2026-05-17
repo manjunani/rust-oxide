@@ -1,0 +1,42 @@
+"""Top-level query operations."""
+type Query {
+  """Fetch a user by id."""
+  user(id: ID!): User
+  """List posts, optionally limited."""
+  posts(limit: Int): [Post!]!
+}
+
+"""Top-level mutation operations."""
+type Mutation {
+  """Create a new post."""
+  createPost(input: PostInput!): Post!
+}
+
+"""An individual user."""
+type User {
+  id: ID!
+  name: String!
+  email: String
+  role: Role!
+}
+
+"""A blog post."""
+type Post {
+  id: ID!
+  title: String!
+  body: String!
+  author: User!
+}
+
+input PostInput {
+  title: String!
+  body: String!
+  authorId: ID!
+}
+
+"""Account role."""
+enum Role {
+  ADMIN
+  MEMBER
+  GUEST
+}

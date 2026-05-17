@@ -4,110 +4,141 @@
 
 ## Status
 
-Early bootstrap. The `oxide-k` micro-kernel and the `oxide-compress` WASM plugin are in place. Other modules (`oxide-gen`, `oxide-browser-sh`, `oxide-mirror`) are planned.
+Bootstrap phases shipped:
+
+| Phase | Crate | What it does |
+|-------|-------|--------------|
+| 1 | `oxide-k` | Micro-kernel: module orchestration, message bus, state registry, manifest discovery |
+| 2 | `oxide-compress` | WASM-bound token compression: field selection, metadata stripping, semantic chunking |
+| 3 | `oxide-gen` | Spec-to-crate generator for OpenAPI / GraphQL / gRPC |
+
+Still to come: `oxide-browser-sh`, `oxide-mirror`, `oxide-llm-orchestrator`, wasmtime integration for the `WasmModule` trait, and tonic-based gRPC dispatch in generated crates.
 
 ## Workspace layout
 
 ```
 rust-oxide/
-├── Cargo.toml                 # workspace manifest
-├── rust-toolchain.toml        # pinned to stable (>= 1.85, edition 2024 capable)
+├── Cargo.toml
+├── rust-toolchain.toml
 ├── crates/
-│   ├── oxide-k/               # Layer 1: native micro-kernel
-│   │   ├── src/lib.rs
-│   │   ├── src/main.rs        # demo binary
-│   │   ├── src/kernel.rs
-│   │   ├── src/module.rs
-│   │   ├── src/bus.rs
-│   │   ├── src/registry.rs
-│   │   └── src/error.rs
-│   └── oxide-compress/        # Layer 2: WASM token-compression plugin
-│       ├── Cargo.toml
-│       └── src/lib.rs
+│   ├── oxide-k/                 # Layer 1 native micro-kernel
+│   │   └── src/{lib, main, kernel, module, bus, registry, manifest, error}.rs
+│   ├── oxide-compress/          # Layer 2 WASM plugin
+│   │   └── src/lib.rs
+│   └── oxide-gen/               # spec-to-crate generator
+│       ├── src/{lib, main, ir, error}.rs
+│       ├── src/parsers/{openapi, graphql, proto, naming}.rs
+│       ├── src/emit/{cargo, rust_lib, rust_cli, skill, mcp, manifest}.rs
+│       └── tests/{integration, fixtures/}
 └── README.md
 ```
 
 ## `oxide-k` — micro-kernel
 
-Three cooperating subsystems:
+Three cooperating subsystems plus a manifest loader:
 
 | Subsystem | File | Responsibility |
 |-----------|------|----------------|
 | Module orchestration | `module.rs` | `Module` and `WasmModule` traits, `ModuleManager` lifecycle |
 | Secure message bus | `bus.rs` | `tokio::sync::mpsc` fan-out, `Command`/`Event` envelopes |
 | Global state registry | `registry.rs` | `sqlx` + SQLite (in-memory by default) for module metadata and config |
+| Manifest discovery | `manifest.rs` | `ModuleManifest` + `Kernel::register_module_from_manifest(path)` |
 
-All three are tied together by the `Kernel` façade (`kernel.rs`).
+Tied together by the `Kernel` façade (`kernel.rs`).
 
 ## `oxide-compress` — token-compression plugin
 
-Token-compression primitives that compile to both native Rust (for testing and in-process embedding) and to WebAssembly (for the kernel's Layer 2 sandbox).
-
 | Function | Purpose |
 |----------|---------|
-| `select_fields(json_data, fields)` | Prune a JSON document down to a chosen set of top-level fields. Recurses into arrays of objects. |
-| `strip_metadata(text)` | Remove HTML tags, decode common entities, strip boilerplate phrases (cookie/privacy/ToS), collapse whitespace. |
-| `chunk_text(text, max_len)` | Split text into chunks of at most `max_len` *characters*, preferring paragraph → sentence → word boundaries. Hard-slices oversized words as a last resort. |
+| `select_fields(json_data, fields)` | Prune JSON to a chosen set of top-level fields |
+| `strip_metadata(text)` | HTML tag stripping, entity decoding, boilerplate removal, whitespace collapsing |
+| `chunk_text(text, max_len)` | Char-bounded chunks preferring paragraph → sentence → word boundaries |
 
-The wasm target additionally exposes `selectFields`, `stripMetadata`, and `chunkText` through `wasm-bindgen` for JavaScript callers.
+Builds for both native (rlib) and `wasm32-unknown-unknown` (cdylib). WASM bindings via `wasm-bindgen` are gated on the wasm target.
+
+## `oxide-gen` — spec-to-crate generator
+
+Takes an OpenAPI 3.x JSON/YAML, a GraphQL SDL, or a `.proto` file and emits a self-contained Rust crate.
+
+### Pipeline
+
+```
+spec file ──► parser ──► ApiSpec (IR) ──► emitters ──► crate dir
+                                              │
+                                              ├── Cargo.toml
+                                              ├── src/lib.rs        (types + reqwest/tonic client)
+                                              ├── src/main.rs       (clap CLI per operation)
+                                              ├── SKILL.md          (Claude Code skill descriptor)
+                                              ├── mcp.json          (MCP server config)
+                                              └── module.json       (oxide-k discovery manifest)
+```
+
+### Parsers
+
+| Format | Crate / approach | Notes |
+|--------|------------------|-------|
+| OpenAPI 3.x | [`openapiv3`] 2.x | JSON or YAML; handles primitives, refs, arrays, object schemas, path/query/body/header parameters |
+| GraphQL SDL | [`apollo-parser`] 0.8 | Walks the CST; emits structs for object/input types, enums for enum types, ops for `Query` / `Mutation` fields |
+| gRPC `.proto` | hand-rolled | proto3-subset parser; supports `message`, `service`, `rpc`, scalars, `repeated` |
+
+All three normalize to a common `ApiSpec` IR (`crates/oxide-gen/src/ir.rs`).
+
+### Emitters
+
+| File | Purpose |
+|------|---------|
+| `Cargo.toml` | Generated crate manifest, with `reqwest` for OpenAPI/GraphQL or `tonic` scaffolding for gRPC |
+| `src/lib.rs` | Type definitions + async `Client` struct with one method per operation |
+| `src/main.rs` | `clap`-derived CLI with one subcommand per operation; pretty-prints JSON output |
+| `SKILL.md` | YAML-frontmatter skill descriptor enumerating every command and its args |
+| `mcp.json` | MCP stdio server config exposing each subcommand as a callable tool |
+| `module.json` | Manifest consumed by `oxide-k`'s `Kernel::register_module_from_manifest` |
+
+### Usage
+
+```bash
+cargo run -p oxide-gen -- \
+  --spec crates/oxide-gen/tests/fixtures/petstore.yaml \
+  --output /tmp/petstore
+
+cd /tmp/petstore
+cargo check          # generated crate compiles independently
+cargo run -- list-pets --base-url https://petstore.example.com/v1
+```
+
+`--kind {openapi,graphql,grpc}` can override auto-detection (defaults to the file extension). `--name <crate_name>` overrides the inferred crate name.
+
+### `oxide-k` integration
+
+Once generated, the kernel can discover the crate via its `module.json`:
+
+```rust
+let kernel = oxide_k::Kernel::in_memory().await?;
+let resolved = kernel
+    .register_module_from_manifest(Path::new("/tmp/petstore"))
+    .await?;
+println!("{:?}", resolved.binary_path);   // /tmp/petstore/pet-store-cli
+```
+
+The module is recorded in the registry in `ModuleState::Loaded`. Spawning the binary as a sandboxed child process is the responsibility of a future process supervisor.
 
 ## Build & run
 
-### Native
-
 ```bash
-cargo build              # everything
-cargo test               # 38 tests across both crates
-cargo run -p oxide-k     # boot the kernel demo
-```
+# everything
+cargo build
+cargo test                       # 57 tests across the workspace
 
-### `oxide-compress` as a WASM module
+# kernel demo
+cargo run -p oxide-k
 
-The library is `crate-type = ["cdylib", "rlib"]`, so it produces a `.wasm` artifact under the `wasm32-unknown-unknown` target.
-
-#### Option A — plain `cargo build`
-
-```bash
-rustup target add wasm32-unknown-unknown
+# WASM compress build
 cargo build -p oxide-compress --target wasm32-unknown-unknown --release
-# Artifact: target/wasm32-unknown-unknown/release/oxide_compress.wasm
-```
-
-This is enough for hosts that load raw `.wasm` and bind imports themselves (e.g. an embedded `wasmtime` runtime inside `oxide-k`).
-
-#### Option B — `wasm-pack` (recommended for JavaScript hosts)
-
-[`wasm-pack`](https://rustwasm.github.io/wasm-pack/) bundles the wasm together with auto-generated JavaScript glue and TypeScript types.
-
-```bash
-# Install once (https://rustwasm.github.io/wasm-pack/installer/)
-curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-# Build for a Node.js consumer
 wasm-pack build crates/oxide-compress --target nodejs --release
-#   -> crates/oxide-compress/pkg/oxide_compress.js
-#   -> crates/oxide-compress/pkg/oxide_compress_bg.wasm
-#   -> crates/oxide-compress/pkg/oxide_compress.d.ts
 
-# Or for a browser bundler (webpack/vite/etc.)
-wasm-pack build crates/oxide-compress --target bundler --release
-
-# Or for direct browser <script type="module">
-wasm-pack build crates/oxide-compress --target web --release
+# generate from a spec
+cargo run -p oxide-gen -- --spec <SPEC> --output <DIR> [--kind <K>] [--name <CRATE>]
 ```
-
-Quick smoke test from Node.js after a `--target nodejs` build:
-
-```js
-const { selectFields, stripMetadata, chunkText } = require(
-  "./crates/oxide-compress/pkg/oxide_compress.js"
-);
-console.log(selectFields('{"id":1,"secret":"x"}', ["id"]));   // {"id":1}
-console.log(stripMetadata("<p>Hello&nbsp;world</p>"));         // Hello world
-console.log(chunkText("Para one.\n\nPara two.", 100));         // ["Para one.", "Para two."]
-```
-
-The release build of `oxide_compress.wasm` is ~125 KB; running it through `wasm-opt -Oz` (which `wasm-pack` does automatically when available) trims it further.
 
 ## License
 

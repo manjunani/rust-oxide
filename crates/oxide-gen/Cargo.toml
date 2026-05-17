@@ -1,34 +1,34 @@
 [package]
-name = "oxide-k"
+name = "oxide-gen"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Oxide Kernel - micro-kernel core for the Rust Oxide Agent-Native OS"
+description = "Spec-to-crate generator for Rust Oxide. Generates Rust clients, CLI commands, SKILL.md, and MCP server configs from OpenAPI, GraphQL, and gRPC specs."
 
 [lib]
-name = "oxide_k"
+name = "oxide_gen"
 path = "src/lib.rs"
 
 [[bin]]
-name = "oxide-k"
+name = "oxide-gen"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { workspace = true }
-sqlx = { workspace = true }
+clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
+serde_yaml = { workspace = true }
+heck = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-async-trait = { workspace = true }
-uuid = { workspace = true }
-chrono = { workspace = true }
+openapiv3 = { workspace = true }
+apollo-parser = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util", "macros"] }
+syn = { workspace = true }
 tempfile = "3.12"
