@@ -1,0 +1,39 @@
+[package]
+name = "oxide-browser-sh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Self-healing AI-driven browser automation for Rust Oxide. Built on chromiumoxide with accessibility-tree-first targeting, an LLM-friendly feedback loop, and token-efficient Markdown extraction via oxide-compress."
+
+[lib]
+name = "oxide_browser_sh"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Enable the chromiumoxide-backed real-browser tests. They are off by
+# default because they require a working Chromium / Chrome install on the
+# host. Run them with `cargo test -p oxide-browser-sh --features live-browser`.
+live-browser = []
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+chromiumoxide = { workspace = true }
+futures = { workspace = true }
+scraper = { workspace = true }
+
+oxide-k = { path = "../oxide-k" }
+oxide-compress = { path = "../oxide-compress" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tracing-subscriber = { workspace = true }

@@ -11,8 +11,9 @@ Bootstrap phases shipped:
 | 1 | `oxide-k` | Micro-kernel: module orchestration, message bus, state registry, manifest discovery |
 | 2 | `oxide-compress` | WASM-bound token compression: field selection, metadata stripping, semantic chunking |
 | 3 | `oxide-gen` | Spec-to-crate generator for OpenAPI / GraphQL / gRPC |
+| 4 | `oxide-browser-sh` | Self-healing browser automation built on `chromiumoxide` |
 
-Still to come: `oxide-browser-sh`, `oxide-mirror`, `oxide-llm-orchestrator`, wasmtime integration for the `WasmModule` trait, and tonic-based gRPC dispatch in generated crates.
+Still to come: `oxide-mirror`, `oxide-llm-orchestrator`, wasmtime integration for the `WasmModule` trait, real CDP `Accessibility.getFullAXTree` ingestion, and tonic-based gRPC dispatch in generated crates.
 
 ## Workspace layout
 
@@ -25,11 +26,14 @@ rust-oxide/
 │   │   └── src/{lib, main, kernel, module, bus, registry, manifest, error}.rs
 │   ├── oxide-compress/          # Layer 2 WASM plugin
 │   │   └── src/lib.rs
-│   └── oxide-gen/               # spec-to-crate generator
-│       ├── src/{lib, main, ir, error}.rs
-│       ├── src/parsers/{openapi, graphql, proto, naming}.rs
-│       ├── src/emit/{cargo, rust_lib, rust_cli, skill, mcp, manifest}.rs
-│       └── tests/{integration, fixtures/}
+│   ├── oxide-gen/               # spec-to-crate generator
+│   │   ├── src/{lib, main, ir, error}.rs
+│   │   ├── src/parsers/{openapi, graphql, proto, naming}.rs
+│   │   ├── src/emit/{cargo, rust_lib, rust_cli, skill, mcp, manifest}.rs
+│   │   └── tests/{integration, fixtures/}
+│   └── oxide-browser-sh/        # self-healing browser automation
+│       └── src/{lib, backend, mock, chromium, accessibility,
+│                  session, healing, extract, kernel, action, error}.rs
 └── README.md
 ```
 
@@ -122,12 +126,48 @@ println!("{:?}", resolved.binary_path);   // /tmp/petstore/pet-store-cli
 
 The module is recorded in the registry in `ModuleState::Loaded`. Spawning the binary as a sandboxed child process is the responsibility of a future process supervisor.
 
+## `oxide-browser-sh` — self-healing browser automation
+
+Provides headless-Chromium control with accessibility-tree-first targeting and a self-healing retry loop.
+
+| Layer | Module | What it does |
+|-------|--------|--------------|
+| Trait | `backend.rs` | `BrowserBackend` — async trait for `navigate / click / input / scroll / html / url / screenshot / accessibility_tree` |
+| Backends | `chromium.rs` / `mock.rs` | Real `chromiumoxide` driver and an in-memory `scraper`-backed mock for offline tests |
+| Selectors | `action.rs` | `Selector::{Role{role,name}, Text, Css, XPath}` — semantic first, brittle last |
+| AX layer | `accessibility.rs` | `AxNode` tree + `AxQuery`; synthesizes a tree from HTML when CDP is unavailable |
+| Healing | `healing.rs` | `HealingStrategy` trait, `DefaultHealing` (rule-based AX→CSS rewrites), `LlmStubHealing` (placeholder for `oxide-llm-orchestrator`) |
+| Session | `session.rs` | `BrowserSession` orchestrator: every action runs through `heal_loop` and is recorded in `SessionStats` |
+| Extraction | `extract.rs` | HTML → clean Markdown, post-processed through `oxide_compress::strip_metadata` + `chunk_text` |
+| Kernel | `kernel.rs` | `BrowserModule` implements `oxide_k::module::Module`; routes `Command::Invoke { module_id: "browser", method, payload }` to session methods |
+
+### Bus methods
+
+| Method | Payload | Action |
+|--------|---------|--------|
+| `navigate` | `{"url": "..."}` | Open the URL |
+| `click` | `{"selector": <Selector>}` | Click element (with healing) |
+| `input` | `{"selector": <Selector>, "text": "..."}` | Type into element |
+| `scroll` | `{"direction": "down", "amount": 240}` | Scroll the viewport |
+| `extract` | `{"max_chunk_chars": 800, "strip_boilerplate": true}` | Render the current page to Markdown + chunks |
+| `stats` | `{}` | Return the session's action history |
+
+Every invocation emits an `Event::Custom { kind: "<method>.ok" | "<method>.err", payload }` on the bus.
+
+### Real-browser tests
+
+Tests that actually launch Chromium are gated behind the `live-browser` feature and tagged `#[ignore]`:
+
+```bash
+cargo test -p oxide-browser-sh --features live-browser -- --ignored
+```
+
 ## Build & run
 
 ```bash
 # everything
 cargo build
-cargo test                       # 57 tests across the workspace
+cargo test                       # 80 tests across the workspace
 
 # kernel demo
 cargo run -p oxide-k
