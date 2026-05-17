@@ -1,0 +1,30 @@
+[package]
+name = "oxide-mirror"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Local, event-sourced data mirror for Rust Oxide. Pulls deltas from API sources, resolves conflicts with pluggable strategies, persists everything to SQLite, and exposes a SQL query interface for agent cross-service reasoning."
+
+[lib]
+name = "oxide_mirror"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+sqlx = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+
+oxide-k = { path = "../oxide-k" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tracing-subscriber = { workspace = true }

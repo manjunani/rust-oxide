@@ -12,8 +12,9 @@ Bootstrap phases shipped:
 | 2 | `oxide-compress` | WASM-bound token compression: field selection, metadata stripping, semantic chunking |
 | 3 | `oxide-gen` | Spec-to-crate generator for OpenAPI / GraphQL / gRPC |
 | 4 | `oxide-browser-sh` | Self-healing browser automation built on `chromiumoxide` |
+| 5 | `oxide-mirror` | Event-sourced local data mirror with conflict strategies and SQL query interface |
 
-Still to come: `oxide-mirror`, `oxide-llm-orchestrator`, wasmtime integration for the `WasmModule` trait, real CDP `Accessibility.getFullAXTree` ingestion, and tonic-based gRPC dispatch in generated crates.
+Still to come: `oxide-llm-orchestrator`, wasmtime integration for the `WasmModule` trait, real CDP `Accessibility.getFullAXTree` ingestion, and tonic-based gRPC dispatch in generated crates.
 
 ## Workspace layout
 
@@ -162,12 +163,47 @@ Tests that actually launch Chromium are gated behind the `live-browser` feature 
 cargo test -p oxide-browser-sh --features live-browser -- --ignored
 ```
 
+## `oxide-mirror` — local event-sourced data mirror
+
+Persistent SQLite store that pulls deltas from API sources, resolves conflicts, and answers read-only SQL queries with full data provenance.
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| Events | `event.rs` | `Delta`, `DeltaOp::{Upsert,Delete}`, `Provenance { source, confidence }`, `MirroredRecord { resource, record_id, payload, source, last_synced_at, confidence, version }` |
+| Source trait | `source.rs` | `SyncSource::pull(cursor) → PullResult { deltas, next_cursor, has_more }`. `oxide-gen` generated clients implement this. `StaticSource` for tests. |
+| Store | `store.rs` | `MirrorStore` (sqlx + SQLite). Tables: `mirror_resources`, `mirror_events` (append-only audit log), `mirror_records` (materialised state), `mirror_cursors` (per-source-per-resource resume points). |
+| Conflict | `conflict.rs` | `ConflictStrategy` trait + `LastWriteWins`, `HighestConfidence`, `KeepLocal`, `MergeJson` (deep JSON merge). |
+| Sync | `sync.rs` | `Syncer` orchestrator: paginates the source, applies through chosen strategy, advances cursors per-resource + global. Returns `SyncReport { pulled, applied, skipped, final_cursor, per_resource }`. |
+| Query | `store.rs` | `MirrorStore::query(sql)` — accepts `SELECT` / `WITH` / `PRAGMA` only, rejects multi-statement input. Returns `Vec<serde_json::Map>` with proper SQLite-type → JSON mapping (handles computed columns with no declared type). |
+| Kernel | `kernel.rs` | `MirrorModule` implements `oxide_k::module::Module`. Bus methods: `sync`, `query`, `get_record`, `list_records`, `resources`, `counts`. Emits `Event::Custom { kind: "<method>.{ok,err}" }`. |
+
+### Bus methods
+
+| Method | Payload | Returns |
+|--------|---------|---------|
+| `sync` | `{"source": "<id>"}` | `SyncReport` |
+| `query` | `{"sql": "SELECT …"}` | `{"rows": [...], "count": N}` |
+| `get_record` | `{"resource": "...", "record_id": "..."}` | `MirroredRecord` or `null` |
+| `list_records` | `{"resource": "..."}` | `[MirroredRecord]` |
+| `resources` | `{}` | `{"resources": [...]}` |
+| `counts` | `{}` | `[[resource, count], ...]` |
+
+### Provenance
+
+Every `mirror_records` row carries:
+- `source` — id of the writer (matches `Provenance::source` on the originating delta)
+- `last_synced_at` — RFC3339 UTC timestamp of the latest applied delta
+- `confidence` — float in `[0.0, 1.0]`
+- `version` — monotonic per-record counter, incremented on every successful apply
+
+`mirror_events` is the full append-only audit trail. Even skipped deltas (due to conflict strategy) are recorded with `applied = 0` and the strategy's decision label.
+
 ## Build & run
 
 ```bash
 # everything
 cargo build
-cargo test                       # 80 tests across the workspace
+cargo test                       # 98 tests across the workspace
 
 # kernel demo
 cargo run -p oxide-k

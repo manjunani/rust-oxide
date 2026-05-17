@@ -5,6 +5,7 @@ members = [
     "crates/oxide-compress",
     "crates/oxide-gen",
     "crates/oxide-browser-sh",
+    "crates/oxide-mirror",
 ]
 
 [workspace.package]
