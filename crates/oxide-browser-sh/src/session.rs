@@ -166,7 +166,7 @@ impl BrowserSession {
                     }
                     // Otherwise: ask the healing strategy for an alternative.
                     let ctx = self.capture_context(action_name, &selector, attempt, &err).await;
-                    let decision = self.healing.heal(&ctx);
+                    let decision = self.healing.heal(&ctx).await;
                     match decision {
                         HealingDecision::Retry(new_sel) => {
                             self.stats.lock().unwrap().healing_retries += 1;

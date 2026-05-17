@@ -18,6 +18,7 @@
 //!   logs it for the future LLM client; in the meantime it delegates to
 //!   [`DefaultHealing`] so end-to-end flows still make progress.
 
+use async_trait::async_trait;
 use scraper::Html;
 use serde::{Deserialize, Serialize};
 
@@ -56,12 +57,14 @@ pub struct HealingContext {
 
 /// Healing strategies implement this trait.
 ///
-/// Strategies are synchronous to keep call-sites simple; long-running LLM
-/// invocations should run on a dedicated channel and have their results
-/// applied via a [`HealingDecision::Retry`] returned by a cached future.
+/// Strategies are async because realistic implementations (LLM-driven
+/// rewrites, remote heuristic services) need to issue I/O. Pure-Rust
+/// strategies are still trivial to write — they simply `async fn`-await
+/// nothing.
+#[async_trait]
 pub trait HealingStrategy: Send + Sync {
     /// Suggest a recovery for `ctx`.
-    fn heal(&self, ctx: &HealingContext) -> HealingDecision;
+    async fn heal(&self, ctx: &HealingContext) -> HealingDecision;
 
     /// Maximum number of attempts to make per action. Default: 3.
     fn max_attempts(&self) -> usize {
@@ -98,8 +101,9 @@ impl DefaultHealing {
     }
 }
 
+#[async_trait]
 impl HealingStrategy for DefaultHealing {
-    fn heal(&self, ctx: &HealingContext) -> HealingDecision {
+    async fn heal(&self, ctx: &HealingContext) -> HealingDecision {
         let tree = AxNode::from_html(&ctx.html);
         if let Some(retry) = upgrade_via_scraper(&ctx.selector, &ctx.html)
             .or_else(|| upgrade_to_semantic(&ctx.selector, &tree))
@@ -203,8 +207,9 @@ impl Default for LlmStubHealing {
     }
 }
 
+#[async_trait]
 impl HealingStrategy for LlmStubHealing {
-    fn heal(&self, ctx: &HealingContext) -> HealingDecision {
+    async fn heal(&self, ctx: &HealingContext) -> HealingDecision {
         tracing::info!(
             target: "oxide_browser_sh::llm",
             action = %ctx.action,
@@ -214,7 +219,7 @@ impl HealingStrategy for LlmStubHealing {
             error = %ctx.error,
             "LLM placeholder: would forward this context to oxide-llm-orchestrator"
         );
-        self.inner.heal(ctx)
+        self.inner.heal(ctx).await
     }
 
     fn max_attempts(&self) -> usize {
@@ -248,10 +253,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn default_upgrades_unique_css_to_role_name() {
+    #[tokio::test]
+    async fn default_upgrades_unique_css_to_role_name() {
         let dh = DefaultHealing::new();
-        let decision = dh.heal(&ctx_for(Selector::css("#cta")));
+        let decision = dh.heal(&ctx_for(Selector::css("#cta"))).await;
         match decision {
             HealingDecision::Retry(Selector::Role { role, name }) => {
                 assert_eq!(role, "button");
@@ -261,10 +266,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn default_rewrites_role_to_css_hint() {
+    #[tokio::test]
+    async fn default_rewrites_role_to_css_hint() {
         let dh = DefaultHealing::new();
-        let decision = dh.heal(&ctx_for(Selector::role_named("link", "Learn more")));
+        let decision = dh
+            .heal(&ctx_for(Selector::role_named("link", "Learn more")))
+            .await;
         match decision {
             HealingDecision::Retry(Selector::Css(css)) => {
                 assert_eq!(css, "#learn-more");
@@ -273,17 +280,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn default_gives_up_on_unrecognisable_selector() {
+    #[tokio::test]
+    async fn default_gives_up_on_unrecognisable_selector() {
         let dh = DefaultHealing::new();
-        let decision = dh.heal(&ctx_for(Selector::css(".no-such-thing-here")));
+        let decision = dh
+            .heal(&ctx_for(Selector::css(".no-such-thing-here")))
+            .await;
         assert!(matches!(decision, HealingDecision::GiveUp));
     }
 
-    #[test]
-    fn llm_stub_delegates_to_default() {
+    #[tokio::test]
+    async fn llm_stub_delegates_to_default() {
         let stub = LlmStubHealing::new();
-        let decision = stub.heal(&ctx_for(Selector::css("#cta")));
+        let decision = stub.heal(&ctx_for(Selector::css("#cta"))).await;
         assert!(matches!(decision, HealingDecision::Retry(_)));
         assert_eq!(stub.label(), "llm-stub");
     }

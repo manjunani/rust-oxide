@@ -6,6 +6,8 @@ members = [
     "crates/oxide-gen",
     "crates/oxide-browser-sh",
     "crates/oxide-mirror",
+    "crates/oxide-llm-orchestrator",
+    "crates/oxide-mcp-server",
 ]
 
 [workspace.package]
@@ -38,6 +40,7 @@ apollo-parser = "0.8"
 chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
 futures = "0.3"
 scraper = "0.20"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 [profile.release]
 lto = "thin"

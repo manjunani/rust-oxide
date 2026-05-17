@@ -13,8 +13,10 @@ Bootstrap phases shipped:
 | 3 | `oxide-gen` | Spec-to-crate generator for OpenAPI / GraphQL / gRPC |
 | 4 | `oxide-browser-sh` | Self-healing browser automation built on `chromiumoxide` |
 | 5 | `oxide-mirror` | Event-sourced local data mirror with conflict strategies and SQL query interface |
+| 6 | `oxide-llm-orchestrator` | LLM front-door — chat client, prompt templates, LLM-driven self-healing |
+| 6 | `oxide-mcp-server` | MCP (Model Context Protocol) stdio server exposing CLI + bus tools |
 
-Still to come: `oxide-llm-orchestrator`, wasmtime integration for the `WasmModule` trait, real CDP `Accessibility.getFullAXTree` ingestion, and tonic-based gRPC dispatch in generated crates.
+Still to come: wasmtime integration for the `WasmModule` trait, real CDP `Accessibility.getFullAXTree` ingestion, tonic-based gRPC dispatch in generated crates.
 
 ## Workspace layout
 
@@ -198,12 +200,57 @@ Every `mirror_records` row carries:
 
 `mirror_events` is the full append-only audit trail. Even skipped deltas (due to conflict strategy) are recorded with `applied = 0` and the strategy's decision label.
 
+## `oxide-llm-orchestrator` — LLM front-door
+
+Provider-agnostic chat client + prompt templates + LLM-driven healing for `oxide-browser-sh`.
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| Client | `client.rs` | `LlmClient` async trait; `OpenAiClient` HTTP impl for any OpenAI-compatible `/v1/chat/completions`; `MockLlmClient` with a canned-response queue + call log for tests |
+| Prompts | `prompts.rs` | `PromptTemplate::{HealingSelector, ErrorAnalysis, Summarize}` with stable system messages and a `Renderable` trait for input substitution. Healing + error-analysis templates auto-request `response_format: json_object` |
+| Healing | `healing.rs` | `LlmHealing` implements `oxide_browser_sh::HealingStrategy` — truncates HTML, builds a healing prompt, parses the LLM's JSON, returns a new `Selector`. Falls back to `DefaultHealing` on any LLM error or unparseable response |
+| Summarisation | `summarize.rs` | `Summarizer` wraps the summarise prompt with optional focus question + word budget |
+| Kernel | `kernel.rs` | `LlmModule` implements `oxide_k::module::Module`. Bus methods: `complete`, `summarize`, `analyze`. Emits `Event::Custom { kind: "<method>.{ok,err}" }` |
+
+### Bus methods
+
+| Method | Payload | Returns |
+|--------|---------|---------|
+| `complete` | `{"messages":[…], "model"?, "temperature"?, "json"?}` | `{"content": …, "model": …, "usage": …}` |
+| `summarize` | `{"text":…, "target_words"?, "focus"?}` | `{"summary":…, "model":…, "usage":…}` |
+| `analyze` | `{"operation":…, "error":…, "context"?}` | `{"analysis":…, "model":…, "usage":…}` |
+
+The `HealingStrategy` trait in `oxide-browser-sh` is now async to support remote (LLM) healers.
+
+## `oxide-mcp-server` — Model Context Protocol stdio server
+
+Exposes generated `oxide-gen` CLIs and `oxide-k` bus actions to MCP-compatible agent runtimes.
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| RPC | `rpc.rs` | JSON-RPC 2.0 envelope (`JsonRpcRequest`, `JsonRpcResponse`, `JsonRpcError`, `RpcId`); standard + MCP-specific error codes |
+| Tools | `tool.rs` | `Tool` async trait + `ToolDescriptor`/`ToolInputSchema`; `CliTool` spawns a subprocess (flag-mapped or stdin-JSON, with timeout); `BusTool` sends `Command::Invoke` on a `MessageBus` and awaits the matching `<method>.{ok,err}` event; `ToolRegistry` keeps them in a name-keyed map |
+| Server | `server.rs` | `McpServer::handle_line` dispatches `initialize`, `tools/list`, `tools/call`, `ping`, and acknowledges MCP lifecycle notifications. `run_io` is the stdio loop (one JSON request per line) |
+| Binary | `main.rs` | Starts an empty-registry stdio server; designed to be embedded by other Rust Oxide processes that build their own registry |
+
+### MCP-protocol coverage
+
+| Method | Returns |
+|--------|---------|
+| `initialize` | `{protocolVersion, serverInfo:{name,version}, capabilities:{tools:{listChanged:false}}}` |
+| `tools/list` | `{tools:[ToolDescriptor]}` (sorted by name) |
+| `tools/call` | `{content:[{type:"text", text:<json>}], structuredContent:<json>, isError:false}` |
+| `notifications/initialized` `notifications/cancelled` | acknowledged, no response |
+| `ping` | `{pong:true}` |
+
+Logs go to **stderr only** — stdout is the JSON-RPC channel.
+
 ## Build & run
 
 ```bash
 # everything
 cargo build
-cargo test                       # 98 tests across the workspace
+cargo test                       # 122 tests across the workspace
 
 # kernel demo
 cargo run -p oxide-k

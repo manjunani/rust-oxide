@@ -1,0 +1,33 @@
+[package]
+name = "oxide-mcp-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "MCP (Model Context Protocol) server for Rust Oxide. Exposes oxide-gen generated CLIs and oxide-browser-sh / oxide-k bus actions as callable tools over stdio JSON-RPC."
+
+[lib]
+name = "oxide_mcp_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oxide-mcp-server"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+
+oxide-k = { path = "../oxide-k" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

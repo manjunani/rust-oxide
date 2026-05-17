@@ -1,0 +1,30 @@
+[package]
+name = "oxide-llm-orchestrator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "LLM client + prompt templates + self-healing dispatcher for Rust Oxide. Talks to any OpenAI-compatible chat-completions endpoint and powers the AI-feedback loop for oxide-browser-sh."
+
+[lib]
+name = "oxide_llm_orchestrator"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+reqwest = { workspace = true }
+
+oxide-k = { path = "../oxide-k" }
+oxide-browser-sh = { path = "../oxide-browser-sh" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+tracing-subscriber = { workspace = true }
