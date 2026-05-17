@@ -1,0 +1,21 @@
+# cargo-audit configuration.
+#
+# Document every ignored advisory with a rationale. Run `cargo audit`
+# locally and in CI; new advisories that aren't listed here cause a
+# non-zero exit.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2023-0071: `rsa` Marvin timing sidechannel.
+    #
+    # rsa is pulled in by `sqlx-mysql` as a transitive optional dep of
+    # `sqlx`. We disable sqlx's default features and only enable the
+    # `sqlite` backend, so sqlx-mysql is recorded in Cargo.lock but is
+    # *never compiled* into any of our binaries (verified: no `librsa*`
+    # artefact in `target/`). Until sqlx upstream stops listing
+    # sqlx-mysql in its always-resolved dep set this advisory will keep
+    # surfacing as a phantom positive.
+    "RUSTSEC-2023-0071",
+]
+informational_warnings = ["unmaintained", "notice"]
+severity_threshold = "low"

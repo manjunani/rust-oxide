@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - rust
+    groups:
+      # Bundle low-risk patch bumps into one PR so review is cheap.
+      patch-bumps:
+        update-types:
+          - patch
+      tokio-stack:
+        patterns:
+          - tokio
+          - tokio-*
+          - tracing
+          - tracing-*
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - ci

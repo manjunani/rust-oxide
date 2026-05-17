@@ -78,6 +78,22 @@ jobs:
             crates/oxide-compress/pkg/
             target/wasm32-unknown-unknown/release/oxide_compress.wasm
 
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit advisories
+        # `--ignore RUSTSEC-2023-0071`: rsa crate pulled in by sqlx-mysql
+        # which we never enable (sqlx is sqlite-only, default-features off).
+        # Phantom Cargo.lock entry — no compiled artefact. See audit.toml
+        # for the full rationale.
+        run: cargo audit --ignore RUSTSEC-2023-0071
+
   docs:
     name: cargo doc
     runs-on: ubuntu-latest
