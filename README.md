@@ -26,6 +26,18 @@ Bootstrap phases shipped:
 
 **Tested workspace state:** `cargo test` → 150 pass · `cargo clippy --workspace --all-targets -- -D warnings` → clean · `cargo fmt --all -- --check` → clean.
 
+## Runnable example agents
+
+Sister repository [`rust-oxide-lib`](https://github.com/manjunani/rust-oxide-lib) ships three example agents built on top of this SDK:
+
+| Sample | What it teaches |
+|--------|-----------------|
+| `hello-agent` | Boot the kernel, register a custom module, observe `Ping`/`Pong` over the bus |
+| `news-agent` | Full end-to-end: browser → extract → compress → mirror → LLM → XAI → graph query, with a printed final report |
+| `mcp-launcher` | Host the browser + mirror modules as MCP tools over stdio for Claude Code |
+
+Clone it as a sibling directory (`../rust-oxide-lib`) — the path deps wire up automatically.
+
 ## Workspace layout
 
 ```
