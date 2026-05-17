@@ -26,6 +26,53 @@ Bootstrap phases shipped:
 
 **Tested workspace state:** `cargo test` → 150 pass · `cargo clippy --workspace --all-targets -- -D warnings` → clean · `cargo fmt --all -- --check` → clean.
 
+## Architecture at a glance
+
+```mermaid
+flowchart TD
+    classDef l1 fill:#0c4a6e,stroke:#38bdf8,color:#f0f9ff,stroke-width:2px;
+    classDef l2 fill:#581c87,stroke:#c084fc,color:#faf5ff,stroke-width:2px;
+    classDef l3 fill:#064e3b,stroke:#34d399,color:#ecfdf5,stroke-width:2px;
+    classDef agent fill:#7c2d12,stroke:#fb923c,color:#fff7ed,stroke-width:2px;
+
+    AGENT["Your binary<br/>main.rs — composes modules,<br/>drives the agent loop"]:::agent
+
+    subgraph L1["Layer 1 — Native Core"]
+        direction LR
+        K1[oxide-k<br/>kernel + bus + registry<br/>+ XAI + wasm_exec]:::l1
+        K2[oxide-mirror<br/>event-sourced SQLite mirror]:::l1
+        K3[oxide-graph<br/>knowledge graph]:::l1
+    end
+
+    subgraph L2["Layer 2 — WASM Plugins"]
+        direction LR
+        W1[oxide-compress<br/>token reducer]:::l2
+    end
+
+    subgraph L3["Layer 3 — AI Harness"]
+        direction LR
+        AH1[oxide-browser-sh<br/>self-healing browser]:::l3
+        AH2[oxide-llm-orchestrator<br/>LLM client + healing]:::l3
+    end
+
+    subgraph T["Transports / Generators"]
+        direction LR
+        T1[oxide-gen<br/>spec → crate]:::agent
+        T2[oxide-mcp-server<br/>MCP JSON-RPC]:::agent
+        T3[oxide-mesh<br/>P2P + CRDTs]:::agent
+    end
+
+    AGENT --> L1
+    AGENT --> L2
+    AGENT --> L3
+    AGENT --> T
+    L3 -. "bus events" .-> L1
+    L2 -. "WASM calls" .-> L1
+    T -. "external traffic" .-> L1
+```
+
+Five more diagrams (crate deps, message-bus sequence, module lifecycle, end-to-end pipeline, MCP integration, mesh topology) live in [`docs/architecture.md`](./docs/architecture.md).
+
 ## Runnable example agents
 
 Sister repository [`rust-oxide-lib`](https://github.com/manjunani/rust-oxide-lib) ships three example agents built on top of this SDK:
