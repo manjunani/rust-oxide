@@ -8,6 +8,10 @@ service Echo {
   rpc Say (SayRequest) returns (SayResponse);
   // Echo the same message many times.
   rpc SayMany (SayRequest) returns (SayResponse);
+  // Server-streaming: receive a single request, push many responses.
+  rpc StreamBack (SayRequest) returns (stream SayResponse);
+  // Bidirectional streaming.
+  rpc Chat (stream SayRequest) returns (stream SayResponse);
 }
 
 message SayRequest {

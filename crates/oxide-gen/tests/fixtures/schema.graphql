@@ -12,6 +12,12 @@ type Mutation {
   createPost(input: PostInput!): Post!
 }
 
+"""Server-pushed subscriptions."""
+type Subscription {
+  """Pushed whenever a new post is created."""
+  postCreated: Post!
+}
+
 """An individual user."""
 type User {
   id: ID!

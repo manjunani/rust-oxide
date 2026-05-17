@@ -8,6 +8,8 @@ members = [
     "crates/oxide-mirror",
     "crates/oxide-llm-orchestrator",
     "crates/oxide-mcp-server",
+    "crates/oxide-graph",
+    "crates/oxide-mesh",
 ]
 
 [workspace.package]

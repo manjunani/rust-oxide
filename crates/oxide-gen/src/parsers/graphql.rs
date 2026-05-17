@@ -23,7 +23,7 @@ use apollo_parser::Parser;
 use crate::error::{GenError, Result};
 use crate::ir::{
     ApiKind, ApiSpec, EnumVariant, Field, HttpMethod, Operation, Param, ParamLocation, Protocol,
-    TypeDef,
+    StreamingMode, TypeDef,
 };
 use crate::parsers::naming::{crate_name, pascal_ident, snake_ident};
 
@@ -51,15 +51,16 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
         match def {
             Definition::ObjectTypeDefinition(obj) => {
                 let name = node_name(obj.name());
-                if name == "Query" || name == "Mutation" {
-                    let http_method = if name == "Mutation" {
-                        HttpMethod::Post
+                if name == "Query" || name == "Mutation" || name == "Subscription" {
+                    let http_method = HttpMethod::Post;
+                    let streaming = if name == "Subscription" {
+                        StreamingMode::ServerStream
                     } else {
-                        HttpMethod::Post
+                        StreamingMode::Unary
                     };
                     if let Some(fd) = obj.fields_definition() {
                         for field in fd.field_definitions() {
-                            operations.push(field_to_operation(&field, http_method));
+                            operations.push(field_to_operation(&field, http_method, streaming));
                         }
                     }
                 } else {
@@ -185,7 +186,11 @@ fn input_value_to_field(ivd: InputValueDefinition) -> Field {
     }
 }
 
-fn field_to_operation(field: &FieldDefinition, http_method: HttpMethod) -> Operation {
+fn field_to_operation(
+    field: &FieldDefinition,
+    http_method: HttpMethod,
+    streaming: StreamingMode,
+) -> Operation {
     let original_id = node_name(field.name());
     let id = snake_ident(&original_id);
     let (return_type, _required) = field
@@ -221,6 +226,7 @@ fn field_to_operation(field: &FieldDefinition, http_method: HttpMethod) -> Opera
         http_method,
         params,
         return_type,
+        streaming,
     }
 }
 
@@ -316,5 +322,18 @@ mod tests {
         let id_arg = user_op.params.iter().find(|p| p.original_name == "id").unwrap();
         assert!(id_arg.required);
         assert_eq!(id_arg.location, ParamLocation::GraphQlVariable);
+        assert_eq!(user_op.streaming, StreamingMode::Unary);
+    }
+
+    #[test]
+    fn subscription_fields_become_server_streams() {
+        let spec = parse(SCHEMA).unwrap();
+        let sub = spec
+            .operations
+            .iter()
+            .find(|o| o.original_id == "postCreated")
+            .expect("subscription field");
+        assert_eq!(sub.streaming, StreamingMode::ServerStream);
+        assert_eq!(sub.protocol, Protocol::GraphQl);
     }
 }

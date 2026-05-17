@@ -146,6 +146,14 @@ fn render_operation(out: &mut String, spec: &ApiSpec, op: &Operation) {
         }
     }
     writeln!(out, "    /// Endpoint: `{}`", op.endpoint).unwrap();
+    if op.streaming.is_streaming() {
+        writeln!(
+            out,
+            "    /// Streaming mode: `{}` — this generated stub returns an error; wire your runtime (`tonic` / GraphQL subscriptions) to convert it into an `impl Stream`.",
+            op.streaming.label()
+        )
+        .unwrap();
+    }
 
     // Signature.
     let sig_params = op
@@ -170,13 +178,36 @@ fn render_operation(out: &mut String, spec: &ApiSpec, op: &Operation) {
         ret = op.return_type,
     ).unwrap();
 
-    match op.protocol {
-        Protocol::Rest => render_rest_body(out, spec, op),
-        Protocol::GraphQl => render_graphql_body(out, op),
-        Protocol::Grpc => render_grpc_body(out, op),
+    if op.streaming.is_streaming() {
+        render_streaming_body(out, op);
+    } else {
+        match op.protocol {
+            Protocol::Rest => render_rest_body(out, spec, op),
+            Protocol::GraphQl => render_graphql_body(out, op),
+            Protocol::Grpc => render_grpc_body(out, op),
+        }
     }
 
     writeln!(out, "    }}").unwrap();
+}
+
+fn render_streaming_body(out: &mut String, op: &Operation) {
+    writeln!(
+        out,
+        "        // Streaming ({}) scaffold. Wire `tonic` server-streaming or a GraphQL subscription client to fulfil this method.",
+        op.streaming.label()
+    )
+    .unwrap();
+    for p in &op.params {
+        writeln!(out, "        let _ = &{n};", n = p.name).unwrap();
+    }
+    writeln!(
+        out,
+        "        anyhow::bail!(\"streaming operation `{}` ({}) not yet wired; regenerate after attaching a streaming runtime.\");",
+        op.original_id,
+        op.streaming.label()
+    )
+    .unwrap();
 }
 
 fn render_rest_body(out: &mut String, _spec: &ApiSpec, op: &Operation) {

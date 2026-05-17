@@ -55,6 +55,9 @@ pub fn render(spec: &ApiSpec) -> String {
         writeln!(out).unwrap();
         writeln!(out, "- **Endpoint:** `{}`", op.endpoint).unwrap();
         writeln!(out, "- **Returns:** `{}`", op.return_type).unwrap();
+        if op.streaming.is_streaming() {
+            writeln!(out, "- **Streaming:** `{}`", op.streaming.label()).unwrap();
+        }
         if !op.params.is_empty() {
             writeln!(out, "- **Arguments:**").unwrap();
             for p in &op.params {

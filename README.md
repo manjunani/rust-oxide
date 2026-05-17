@@ -15,6 +15,10 @@ Bootstrap phases shipped:
 | 5 | `oxide-mirror` | Event-sourced local data mirror with conflict strategies and SQL query interface |
 | 6 | `oxide-llm-orchestrator` | LLM front-door — chat client, prompt templates, LLM-driven self-healing |
 | 6 | `oxide-mcp-server` | MCP (Model Context Protocol) stdio server exposing CLI + bus tools |
+| 7 | `oxide-graph` | Semantic knowledge graph: in-memory typed nodes + labelled edges, pattern queries, BFS traversal, mirror-record ingestion |
+| 7 | `oxide-mesh` | Inter-agent communication: in-process `tokio::mpsc` fabric + JSON-line TCP transport, capability advertising, broadcast / direct / task messages |
+| 7 | `oxide-k::xai` | Append-only Explainable-AI decision log: actor, action, rationale, inputs, output, confidence, queryable by actor / recent |
+| 7 | `oxide-gen` streaming | GraphQL `type Subscription` fields + gRPC `stream` request / response detected and tagged as `ServerStream` / `ClientStream` / `BidiStream`; emitter renders streaming stubs |
 
 Still to come: wasmtime integration for the `WasmModule` trait, real CDP `Accessibility.getFullAXTree` ingestion, tonic-based gRPC dispatch in generated crates.
 
@@ -245,12 +249,56 @@ Exposes generated `oxide-gen` CLIs and `oxide-k` bus actions to MCP-compatible a
 
 Logs go to **stderr only** — stdout is the JSON-RPC channel.
 
+## `oxide-graph` — semantic knowledge graph
+
+In-process property graph that fuses `oxide-mirror` rows, `oxide-browser-sh` extractions, and any other module's facts.
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| Graph | `graph.rs` | `Node{id,labels,properties}`, `Edge{id,from,to,label,properties}`, `GraphStore` async trait, `InMemoryGraph` with label / out-edge / in-edge indices |
+| Query | `query.rs` | `NodeQuery::label(L).property_eq(K,V)`, `EdgeQuery::outbound/inbound/either`, `traverse(start, edge_label?, max_depth)` BFS |
+| Ingest | `ingest.rs` | `ingest_record(RecordRef)` — maps a JSON object into a node; string fields shaped `"<resource>:<id>"` become reference edges (with placeholder nodes on dangling refs) |
+| Kernel | `kernel.rs` | `GraphModule` bus methods: `ingest`, `upsert_node`, `add_edge`, `get_node`, `node_query`, `edge_query`, `traverse`, `stats` |
+
+## `oxide-mesh` — inter-agent communication
+
+Transport-agnostic peer fabric. Two backends ship: `tokio::mpsc` for in-process federation, JSON-line TCP for cross-host.
+
+| Component | File | Responsibility |
+|-----------|------|----------------|
+| Protocol | `message.rs` | `PeerMessage::{Hello, Broadcast, Direct, Task, Result}` with `PeerCapability` advertising |
+| Local | `local.rs` | `LocalMesh` channel registry; topic-filtered broadcast + direct routing |
+| TCP | `tcp.rs` | `TcpMesh::serve(addr)` accepts JSON-line peers; `TcpMesh::connect(addr, hello)` returns a `TcpClient` |
+| Kernel | `kernel.rs` | `MeshModule` registers `kernel` as a peer, forwards inbound peer traffic onto the bus as `peer.{hello,broadcast,direct,task,result}` Custom events; bus methods: `publish`, `directory`, `peer_count` |
+
+## XAI — `oxide-k::xai`
+
+Append-only decision log inside the kernel registry. Used by healers, mirrors, and any agent that wants to explain itself.
+
+```rust
+use oxide_k::xai::{Decision, DecisionLog};
+
+let log = DecisionLog::open(kernel.registry()).await?;
+log.log(
+    &Decision::new("healer", "rewrite-selector", "AX role match found")
+        .with_inputs(serde_json::json!({"css": ".primary"}))
+        .with_output(serde_json::json!({"role": "button", "name": "Sign up"}))
+        .with_confidence(0.85),
+).await?;
+```
+
+Stored in a `xai_decisions` SQLite table next to `modules` / `config`. Queryable via `recent(n)` and `by_actor(id)`. Confidence is clamped to `[0.0, 1.0]`.
+
+## `oxide-gen` streaming refinements
+
+GraphQL fields under `type Subscription { ... }` are tagged with `StreamingMode::ServerStream`. Proto `rpc Method (stream X) returns (stream Y)` becomes `BidiStream`; the four combinations (`Unary` / `ServerStream` / `ClientStream` / `BidiStream`) map directly. Emitted client methods include a streaming-mode comment and a runtime `anyhow::bail!` stub so callers know to wire `tonic`'s server-streaming or a GraphQL subscription client before relying on them. `SKILL.md` notes the streaming mode per command.
+
 ## Build & run
 
 ```bash
 # everything
 cargo build
-cargo test                       # 122 tests across the workspace
+cargo test                       # 147 tests across the workspace
 
 # kernel demo
 cargo run -p oxide-k

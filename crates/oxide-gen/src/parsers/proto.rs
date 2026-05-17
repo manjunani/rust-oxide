@@ -16,7 +16,8 @@
 
 use crate::error::Result;
 use crate::ir::{
-    ApiKind, ApiSpec, Field, HttpMethod, Operation, Param, ParamLocation, Protocol, TypeDef,
+    ApiKind, ApiSpec, Field, HttpMethod, Operation, Param, ParamLocation, Protocol, StreamingMode,
+    TypeDef,
 };
 use crate::parsers::naming::{crate_name, pascal_ident, snake_ident};
 
@@ -305,8 +306,17 @@ fn parse_rpc_line(line: &str, service_name: &str) -> Option<Operation> {
     let after_returns = &after_req[returns_idx + "returns".len()..];
     let res_inner = extract_paren(after_returns)?;
 
+    let req_stream = req_inner.trim().starts_with("stream");
+    let res_stream = res_inner.trim().starts_with("stream");
     let request_type = strip_stream(req_inner);
     let response_type = strip_stream(res_inner);
+
+    let streaming = match (req_stream, res_stream) {
+        (false, false) => StreamingMode::Unary,
+        (false, true) => StreamingMode::ServerStream,
+        (true, false) => StreamingMode::ClientStream,
+        (true, true) => StreamingMode::BidiStream,
+    };
 
     let id = snake_ident(method_name);
     let original_id = method_name.to_string();
@@ -330,6 +340,7 @@ fn parse_rpc_line(line: &str, service_name: &str) -> Option<Operation> {
             description: None,
         }],
         return_type: response_rust,
+        streaming,
     })
 }
 
@@ -374,6 +385,24 @@ mod tests {
         assert_eq!(op.endpoint, "/Echo/Say");
         assert_eq!(op.params[0].rust_type, "SayRequest");
         assert_eq!(op.return_type, "SayResponse");
+        assert_eq!(op.streaming, StreamingMode::Unary);
+    }
+
+    #[test]
+    fn detects_streaming_modes() {
+        let spec = parse(ECHO).unwrap();
+        let stream_back = spec
+            .operations
+            .iter()
+            .find(|o| o.original_id == "StreamBack")
+            .unwrap();
+        assert_eq!(stream_back.streaming, StreamingMode::ServerStream);
+        let chat = spec
+            .operations
+            .iter()
+            .find(|o| o.original_id == "Chat")
+            .unwrap();
+        assert_eq!(chat.streaming, StreamingMode::BidiStream);
     }
 
     #[test]

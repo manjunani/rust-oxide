@@ -141,6 +141,45 @@ pub struct Operation {
     pub params: Vec<Param>,
     /// Pre-rendered Rust return type, e.g. `Pet` or `Vec<Pet>` or `()`.
     pub return_type: String,
+    /// Streaming direction. `Unary` for plain request/response operations,
+    /// `ServerStream` for GraphQL subscriptions and gRPC `stream` responses,
+    /// `ClientStream` / `BidiStream` for gRPC stream-in / stream-both
+    /// signatures.
+    #[serde(default)]
+    pub streaming: StreamingMode,
+}
+
+/// Streaming direction tag attached to an [`Operation`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamingMode {
+    /// Plain request/response.
+    #[default]
+    Unary,
+    /// Server pushes multiple messages (GraphQL `Subscription`, gRPC
+    /// `stream` response).
+    ServerStream,
+    /// Client pushes multiple messages (gRPC `stream` request).
+    ClientStream,
+    /// Both sides stream (gRPC `stream` request + `stream` response).
+    BidiStream,
+}
+
+impl StreamingMode {
+    /// `true` for any non-unary mode.
+    pub fn is_streaming(self) -> bool {
+        !matches!(self, StreamingMode::Unary)
+    }
+
+    /// Short human-readable label used in SKILL.md / docs.
+    pub fn label(self) -> &'static str {
+        match self {
+            StreamingMode::Unary => "unary",
+            StreamingMode::ServerStream => "server-stream",
+            StreamingMode::ClientStream => "client-stream",
+            StreamingMode::BidiStream => "bidi-stream",
+        }
+    }
 }
 
 /// The wire protocol used by an operation.

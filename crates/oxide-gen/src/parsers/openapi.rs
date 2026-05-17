@@ -16,7 +16,7 @@ use openapiv3::{
 use crate::error::Result;
 use crate::ir::{
     ApiKind, ApiSpec, EnumVariant, Field, HttpMethod, Operation, Param, ParamLocation, Protocol,
-    TypeDef,
+    StreamingMode, TypeDef,
 };
 use crate::parsers::naming::{crate_name, pascal_ident, snake_ident};
 
@@ -305,6 +305,7 @@ fn build_operation(path: &str, method: HttpMethod, op: &OpenApiOp) -> Operation 
         http_method: method,
         params,
         return_type,
+        streaming: StreamingMode::Unary,
     }
 }
 

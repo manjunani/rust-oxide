@@ -29,6 +29,7 @@ pub mod kernel;
 pub mod manifest;
 pub mod module;
 pub mod registry;
+pub mod xai;
 
 pub use error::{KernelError, Result};
 pub use kernel::Kernel;

@@ -88,6 +88,13 @@ impl StateRegistry {
         Ok(registry)
     }
 
+    /// Read-only access to the underlying `sqlx` pool. Used by the XAI
+    /// decision log and other in-kernel extensions that need to manage
+    /// additional tables alongside the core registry schema.
+    pub fn pool(&self) -> &sqlx::SqlitePool {
+        &self.pool
+    }
+
     /// Run the bootstrap schema migration. Idempotent.
     async fn migrate(&self) -> Result<()> {
         sqlx::query(
