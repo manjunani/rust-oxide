@@ -37,5 +37,5 @@ pub use client::{
 pub use error::{LlmError, Result};
 pub use healing::LlmHealing;
 pub use kernel::LlmModule;
-pub use prompts::{HealingPromptInput, PromptTemplate, ErrorAnalysisInput, SummarizeInput};
+pub use prompts::{ErrorAnalysisInput, HealingPromptInput, PromptTemplate, SummarizeInput};
 pub use summarize::Summarizer;

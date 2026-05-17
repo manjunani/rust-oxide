@@ -20,8 +20,7 @@ fn fixture(name: &str) -> std::path::PathBuf {
 }
 
 fn assert_syntactically_valid_rust(path: &Path) {
-    let raw = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("read {path:?}: {e}"));
+    let raw = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
     if let Err(e) = syn::parse_file(&raw) {
         panic!("emitted Rust at {path:?} did not parse:\n{e}\n--- source ---\n{raw}");
     }
@@ -30,11 +29,22 @@ fn assert_syntactically_valid_rust(path: &Path) {
 #[test]
 fn generates_openapi_crate() {
     let tmp = tempfile::tempdir().unwrap();
-    let report =
-        generate_from_path(&fixture("petstore.yaml"), Some(ApiKind::OpenApi), tmp.path(), None)
-            .expect("generation");
+    let report = generate_from_path(
+        &fixture("petstore.yaml"),
+        Some(ApiKind::OpenApi),
+        tmp.path(),
+        None,
+    )
+    .expect("generation");
 
-    for name in ["Cargo.toml", "src/lib.rs", "src/main.rs", "SKILL.md", "mcp.json", "module.json"] {
+    for name in [
+        "Cargo.toml",
+        "src/lib.rs",
+        "src/main.rs",
+        "SKILL.md",
+        "mcp.json",
+        "module.json",
+    ] {
         let p = tmp.path().join(name);
         assert!(p.exists(), "expected {name} to exist");
     }
@@ -47,9 +57,18 @@ fn generates_openapi_crate() {
 
     let lib_src = std::fs::read_to_string(&lib).unwrap();
     assert!(lib_src.contains("pub struct Pet"), "Pet struct missing");
-    assert!(lib_src.contains("pub enum PetStatus"), "PetStatus enum missing");
-    assert!(lib_src.contains("pub async fn list_pets"), "list_pets method missing");
-    assert!(lib_src.contains("pub async fn get_pet"), "get_pet method missing");
+    assert!(
+        lib_src.contains("pub enum PetStatus"),
+        "PetStatus enum missing"
+    );
+    assert!(
+        lib_src.contains("pub async fn list_pets"),
+        "list_pets method missing"
+    );
+    assert!(
+        lib_src.contains("pub async fn get_pet"),
+        "get_pet method missing"
+    );
     // Path substitution uses snake-cased identifier.
     assert!(lib_src.contains("{pet_id}"));
 
@@ -115,8 +134,13 @@ fn generates_graphql_crate() {
 #[test]
 fn generates_grpc_crate() {
     let tmp = tempfile::tempdir().unwrap();
-    generate_from_path(&fixture("echo.proto"), Some(ApiKind::Grpc), tmp.path(), None)
-        .expect("generation");
+    generate_from_path(
+        &fixture("echo.proto"),
+        Some(ApiKind::Grpc),
+        tmp.path(),
+        None,
+    )
+    .expect("generation");
 
     let lib = tmp.path().join("src/lib.rs");
     let main = tmp.path().join("src/main.rs");

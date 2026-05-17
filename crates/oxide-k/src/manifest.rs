@@ -102,11 +102,7 @@ pub struct ResolvedManifest {
 impl ResolvedManifest {
     /// Resolve every path field against `base_dir`.
     pub fn resolve(manifest: ModuleManifest, base_dir: &Path) -> Self {
-        let join = |relative: &Option<String>| {
-            relative
-                .as_deref()
-                .map(|s| base_dir.join(s))
-        };
+        let join = |relative: &Option<String>| relative.as_deref().map(|s| base_dir.join(s));
         Self {
             binary_path: join(&manifest.binary),
             skill_path: join(&manifest.skill),
@@ -123,15 +119,14 @@ impl Kernel {
     /// `path` may be the manifest file or its parent directory. The module is
     /// recorded in [`ModuleState::Loaded`]. Starting the underlying binary is
     /// the responsibility of a future process supervisor.
-    pub async fn register_module_from_manifest(
-        &self,
-        path: &Path,
-    ) -> Result<ResolvedManifest> {
+    pub async fn register_module_from_manifest(&self, path: &Path) -> Result<ResolvedManifest> {
         let manifest = ModuleManifest::load(path)?;
         let base_dir = if path.is_dir() {
             path.to_path_buf()
         } else {
-            path.parent().unwrap_or_else(|| Path::new(".")).to_path_buf()
+            path.parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()
         };
         let resolved = ResolvedManifest::resolve(manifest, &base_dir);
         let metadata = resolved.manifest.metadata();

@@ -68,11 +68,7 @@ pub struct Edge {
 
 impl Edge {
     /// Build an edge with a generated id.
-    pub fn new(
-        from: impl Into<NodeId>,
-        to: impl Into<NodeId>,
-        label: impl Into<String>,
-    ) -> Self {
+    pub fn new(from: impl Into<NodeId>, to: impl Into<NodeId>, label: impl Into<String>) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             from: from.into(),

@@ -225,7 +225,10 @@ mod tests {
         mock.register_page("https://example.com/", HTML);
         mock.navigate("https://example.com/").await.unwrap();
         assert_eq!(mock.url().await.unwrap(), "https://example.com/");
-        assert_eq!(mock.actions(), vec![MockAction::Navigate("https://example.com/".into())]);
+        assert_eq!(
+            mock.actions(),
+            vec![MockAction::Navigate("https://example.com/".into())]
+        );
     }
 
     #[tokio::test]
@@ -252,10 +255,7 @@ mod tests {
         let mock = MockBackend::new();
         mock.register_page("/", HTML);
         mock.navigate("/").await.unwrap();
-        let err = mock
-            .click(&Selector::css(".nope"))
-            .await
-            .unwrap_err();
+        let err = mock.click(&Selector::css(".nope")).await.unwrap_err();
         assert!(matches!(err, BrowserError::NotFound(_)));
     }
 

@@ -48,8 +48,7 @@ mod tests {
 
     #[tokio::test]
     async fn summarize_returns_trimmed_content() {
-        let client: Arc<dyn LlmClient> =
-            Arc::new(MockLlmClient::single("  short summary  "));
+        let client: Arc<dyn LlmClient> = Arc::new(MockLlmClient::single("  short summary  "));
         let s = Summarizer::new(client, "m");
         let out = s.summarize("Long text", 20, None).await.unwrap();
         assert_eq!(out, "short summary");

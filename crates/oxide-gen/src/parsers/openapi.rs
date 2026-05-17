@@ -8,9 +8,9 @@
 //! compiles.
 
 use openapiv3::{
-    ArrayType, IntegerFormat, NumberFormat, ObjectType, OpenAPI, Operation as OpenApiOp,
-    Parameter, ParameterSchemaOrContent, PathItem, ReferenceOr, Schema, SchemaKind,
-    StatusCode, Type as SchemaType, VariantOrUnknownOrEmpty,
+    ArrayType, IntegerFormat, NumberFormat, ObjectType, OpenAPI, Operation as OpenApiOp, Parameter,
+    ParameterSchemaOrContent, PathItem, ReferenceOr, Schema, SchemaKind, StatusCode,
+    Type as SchemaType, VariantOrUnknownOrEmpty,
 };
 
 use crate::error::Result;
@@ -35,10 +35,7 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
         api.info.version.clone()
     };
     let description = api.info.description.clone();
-    let base_url = api
-        .servers
-        .first()
-        .map(|s| strip_template(&s.url));
+    let base_url = api.servers.first().map(|s| strip_template(&s.url));
 
     let mut types = Vec::new();
     if let Some(components) = api.components.as_ref() {
@@ -51,7 +48,9 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
 
     let mut operations = Vec::new();
     for (path, item_ref) in &api.paths.paths {
-        let ReferenceOr::Item(item) = item_ref else { continue };
+        let ReferenceOr::Item(item) = item_ref else {
+            continue;
+        };
         collect_operations(path, item, &mut operations);
     }
 
@@ -259,10 +258,7 @@ fn build_operation(path: &str, method: HttpMethod, op: &OpenApiOp) -> Operation 
         .clone()
         .unwrap_or_else(|| default_op_id(method, path));
     let id = snake_ident(&original_id);
-    let description = op
-        .summary
-        .clone()
-        .or_else(|| op.description.clone());
+    let description = op.summary.clone().or_else(|| op.description.clone());
 
     let mut params = Vec::new();
     for p in &op.parameters {

@@ -4,11 +4,11 @@ use heck::{ToPascalCase, ToSnakeCase};
 
 /// Reserved Rust keywords that need an `r#` prefix when used as identifiers.
 const RUST_KEYWORDS: &[&str] = &[
-    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-    "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
-    "mut", "pub", "ref", "return", "Self", "self", "static", "struct", "super", "trait", "true",
-    "type", "unsafe", "use", "where", "while", "abstract", "become", "box", "do", "final",
-    "macro", "override", "priv", "typeof", "unsized", "virtual", "yield", "try", "union",
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern",
+    "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "Self", "self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while", "abstract", "become", "box", "do", "final", "macro",
+    "override", "priv", "typeof", "unsized", "virtual", "yield", "try", "union",
 ];
 
 /// Convert a free-form name into a snake_case Rust identifier, escaping

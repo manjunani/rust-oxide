@@ -133,11 +133,7 @@ impl StateRegistry {
     // -----------------------------------------------------------------------
 
     /// Insert or update a module's metadata.
-    pub async fn upsert_module(
-        &self,
-        metadata: &ModuleMetadata,
-        state: ModuleState,
-    ) -> Result<()> {
+    pub async fn upsert_module(&self, metadata: &ModuleMetadata, state: ModuleState) -> Result<()> {
         let now = Utc::now().to_rfc3339();
         let kind = serde_json::to_string(&metadata.kind)?;
         let state_str = serde_json::to_string(&state)?;
@@ -172,14 +168,12 @@ impl StateRegistry {
     pub async fn set_module_state(&self, id: &str, state: ModuleState) -> Result<()> {
         let state_str = serde_json::to_string(&state)?;
         let now = Utc::now().to_rfc3339();
-        let res = sqlx::query(
-            "UPDATE modules SET state = ?1, updated_at = ?2 WHERE id = ?3",
-        )
-        .bind(state_str)
-        .bind(now)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+        let res = sqlx::query("UPDATE modules SET state = ?1, updated_at = ?2 WHERE id = ?3")
+            .bind(state_str)
+            .bind(now)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
 
         if res.rows_affected() == 0 {
             return Err(KernelError::UnknownModule(id.to_string()));
@@ -330,7 +324,9 @@ mod tests {
         assert_eq!(rec.state, ModuleState::Loaded);
 
         // Upsert promotes state.
-        reg.upsert_module(&meta, ModuleState::Running).await.unwrap();
+        reg.upsert_module(&meta, ModuleState::Running)
+            .await
+            .unwrap();
         let rec = reg.get_module("mirror").await.unwrap().expect("record");
         assert_eq!(rec.state, ModuleState::Running);
     }

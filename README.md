@@ -19,8 +19,12 @@ Bootstrap phases shipped:
 | 7 | `oxide-mesh` | Inter-agent communication: in-process `tokio::mpsc` fabric + JSON-line TCP transport, capability advertising, broadcast / direct / task messages |
 | 7 | `oxide-k::xai` | Append-only Explainable-AI decision log: actor, action, rationale, inputs, output, confidence, queryable by actor / recent |
 | 7 | `oxide-gen` streaming | GraphQL `type Subscription` fields + gRPC `stream` request / response detected and tagged as `ServerStream` / `ClientStream` / `BidiStream`; emitter renders streaming stubs |
+| 8 | `oxide-k::wasm_exec` | `wasmtime`-backed `WasmExecutor` (feature `wasmtime-runtime`) — loads `.wasm` artefacts, enumerates exports, invokes typed functions |
+| 8 | `oxide-browser-sh` CDP | Real `Accessibility.getFullAXTree` ingestion path; HTML synthesis kept as fallback |
+| 8 | `oxide-mesh::crdt` | `GSet`, `LwwRegister`, `PnCounter` CRDT primitives for eventually-consistent federated state |
+| 8 | CI / Release / Docs | GitHub Actions workflows for fmt + clippy + test + WASM + cross-platform release + `crates.io` publish, plus `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, dual MIT/Apache-2.0 license |
 
-Still to come: wasmtime integration for the `WasmModule` trait, real CDP `Accessibility.getFullAXTree` ingestion, tonic-based gRPC dispatch in generated crates.
+**Tested workspace state:** `cargo test` → 150 pass · `cargo clippy --workspace --all-targets -- -D warnings` → clean · `cargo fmt --all -- --check` → clean.
 
 ## Workspace layout
 

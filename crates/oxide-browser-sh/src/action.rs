@@ -57,7 +57,10 @@ impl Selector {
     /// Short human-readable label for logs.
     pub fn label(&self) -> String {
         match self {
-            Selector::Role { role, name: Some(n) } => format!("role:{role}[name~={n:?}]"),
+            Selector::Role {
+                role,
+                name: Some(n),
+            } => format!("role:{role}[name~={n:?}]"),
             Selector::Role { role, name: None } => format!("role:{role}"),
             Selector::Text(t) => format!("text:{t:?}"),
             Selector::Css(c) => format!("css:{c}"),

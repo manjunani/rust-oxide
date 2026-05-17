@@ -17,7 +17,9 @@ pub fn render(spec: &ApiSpec) -> String {
         deps.push_str("reqwest = { version = \"0.12\", features = [\"json\", \"rustls-tls\"], default-features = false }\n");
     }
     if needs_tonic {
-        deps.push_str("# gRPC scaffold — wire up `tonic` + `prost` once you compile the .proto file.\n");
+        deps.push_str(
+            "# gRPC scaffold — wire up `tonic` + `prost` once you compile the .proto file.\n",
+        );
         deps.push_str("tonic = \"0.12\"\n");
         deps.push_str("prost = \"0.13\"\n");
     }

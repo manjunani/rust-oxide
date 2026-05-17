@@ -66,9 +66,7 @@ pub async fn ingest_record(store: &dyn GraphStore, record: RecordRef<'_>) -> Res
 }
 
 fn parse_record_ref(s: &str) -> Option<(&str, &str)> {
-    let mut parts = s.splitn(2, ':');
-    let resource = parts.next()?;
-    let record_id = parts.next()?;
+    let (resource, record_id) = s.split_once(':')?;
     if resource.is_empty() || record_id.is_empty() {
         return None;
     }

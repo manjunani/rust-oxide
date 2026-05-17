@@ -54,11 +54,10 @@ pub fn generate_from_path(
             ),
         })?;
 
-    let raw =
-        std::fs::read_to_string(spec_path).map_err(|source| GenError::ReadSpec {
-            path: spec_path.to_path_buf(),
-            source,
-        })?;
+    let raw = std::fs::read_to_string(spec_path).map_err(|source| GenError::ReadSpec {
+        path: spec_path.to_path_buf(),
+        source,
+    })?;
 
     let mut spec = match kind {
         ApiKind::OpenApi => parsers::openapi::parse(&raw)?,

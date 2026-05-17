@@ -29,6 +29,24 @@ async-trait = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 
+[features]
+default = []
+# Enable `wasmtime`-backed execution of WASM module artefacts. Off by default
+# because `wasmtime` pulls in a substantial native dep tree (the WASM runtime
+# is ~5 MB of code on its own).
+wasmtime-runtime = ["dep:wasmtime"]
+
+[dependencies.wasmtime]
+version = "26"
+default-features = false
+features = ["cranelift", "runtime", "std"]
+optional = true
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3.12"
+wat = "1.220"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

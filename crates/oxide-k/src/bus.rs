@@ -181,7 +181,11 @@ impl MessageBus {
     pub async fn subscribe(&self) -> Subscription {
         let (tx, rx) = mpsc::channel(DEFAULT_SUBSCRIBER_CAPACITY);
         let id = Uuid::new_v4();
-        self.inner.subscribers.write().await.push(Subscriber { id, tx });
+        self.inner
+            .subscribers
+            .write()
+            .await
+            .push(Subscriber { id, tx });
         Subscription { receiver: rx, id }
     }
 
@@ -281,7 +285,9 @@ mod tests {
         }
         // Dropping the subscription closes the receiver end. The bus prunes it
         // on the next publish.
-        bus.emit_event("test", Event::Pong { from: "x".into() }).await.unwrap();
+        bus.emit_event("test", Event::Pong { from: "x".into() })
+            .await
+            .unwrap();
         assert_eq!(bus.subscriber_count().await, 0);
     }
 

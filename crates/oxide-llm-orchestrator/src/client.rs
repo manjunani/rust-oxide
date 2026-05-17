@@ -350,7 +350,10 @@ mod tests {
         assert_eq!(req.messages.len(), 2);
         assert_eq!(req.messages[0].role, ChatRole::System);
         assert_eq!(req.messages[1].role, ChatRole::User);
-        assert!(matches!(req.response_format, Some(ResponseFormat::JsonObject)));
+        assert!(matches!(
+            req.response_format,
+            Some(ResponseFormat::JsonObject)
+        ));
         assert_eq!(req.temperature, 0.0);
     }
 }

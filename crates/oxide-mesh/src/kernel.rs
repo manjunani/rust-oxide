@@ -197,7 +197,8 @@ async fn dispatch(
             Ok(serde_json::json!({"ok": true}))
         }
         "directory" => {
-            let _p: DirectoryPayload = serde_json::from_value(payload).unwrap_or(DirectoryPayload {});
+            let _p: DirectoryPayload =
+                serde_json::from_value(payload).unwrap_or(DirectoryPayload {});
             let dir = mesh.directory().await;
             Ok(serde_json::to_value(dir)?)
         }
@@ -288,11 +289,8 @@ mod tests {
 
         let mut saw = false;
         for _ in 0..15 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(300),
-                sub.receiver.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(300), sub.receiver.recv())
+                .await
             {
                 Ok(Some(env)) => {
                     if let Message::Event(Event::Custom { kind, payload, .. }) = env.message {

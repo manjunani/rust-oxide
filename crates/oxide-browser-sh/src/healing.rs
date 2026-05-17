@@ -130,7 +130,9 @@ impl HealingStrategy for DefaultHealing {
 /// previously failed at the backend usually still matches the DOM snapshot,
 /// at which point we can simply name the element semantically.
 fn upgrade_via_scraper(failed: &Selector, html: &str) -> Option<Selector> {
-    let Selector::Css(css) = failed else { return None };
+    let Selector::Css(css) = failed else {
+        return None;
+    };
     let sel = scraper::Selector::parse(css).ok()?;
     let doc = Html::parse_document(html);
     let mut iter = doc.select(&sel);
@@ -148,13 +150,18 @@ fn upgrade_via_scraper(failed: &Selector, html: &str) -> Option<Selector> {
 /// If the failed selector is a brittle CSS selector that we have an AX
 /// fallback for, return the semantic equivalent.
 fn upgrade_to_semantic(failed: &Selector, tree: &AxNode) -> Option<Selector> {
-    let Selector::Css(css) = failed else { return None };
+    let Selector::Css(css) = failed else {
+        return None;
+    };
 
     // Heuristic: look for an AX node whose css_hint contains the same final
     // selector token (id / class / tag). If exactly one node matches, return a
     // role+name selector for it; that is strictly more resilient than the
     // original CSS.
-    let needle = css.trim_start_matches('.').trim_start_matches('#').to_string();
+    let needle = css
+        .trim_start_matches('.')
+        .trim_start_matches('#')
+        .to_string();
     let candidates: Vec<_> = tree
         .walk()
         .filter(|n| n.css_hint.as_deref().is_some_and(|h| h.contains(&needle)))

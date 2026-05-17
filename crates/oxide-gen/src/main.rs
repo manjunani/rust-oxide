@@ -60,8 +60,12 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     info!(spec = ?args.spec, output = ?args.output, "starting generation");
 
-    let report =
-        generate_from_path(&args.spec, args.kind.map(Into::into), &args.output, args.name.as_deref())?;
+    let report = generate_from_path(
+        &args.spec,
+        args.kind.map(Into::into),
+        &args.output,
+        args.name.as_deref(),
+    )?;
 
     info!(
         crate_dir = ?report.crate_dir,

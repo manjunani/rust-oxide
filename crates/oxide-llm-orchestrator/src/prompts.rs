@@ -205,7 +205,10 @@ mod tests {
         assert_eq!(req.messages.len(), 2);
         assert!(req.messages[1].content.contains("css:.primary"));
         assert!(req.messages[1].content.contains("<button id=\"cta\">"));
-        assert!(matches!(req.response_format, Some(ResponseFormat::JsonObject)));
+        assert!(matches!(
+            req.response_format,
+            Some(ResponseFormat::JsonObject)
+        ));
     }
 
     #[test]
@@ -216,7 +219,9 @@ mod tests {
             context: json!({"endpoint": "https://x.example"}),
         };
         let req = PromptTemplate::ErrorAnalysis.build_request("m", &input);
-        assert!(req.messages[1].content.contains("\"endpoint\":\"https://x.example\""));
+        assert!(req.messages[1]
+            .content
+            .contains("\"endpoint\":\"https://x.example\""));
     }
 
     #[test]

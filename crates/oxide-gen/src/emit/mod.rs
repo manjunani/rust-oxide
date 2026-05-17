@@ -70,13 +70,21 @@ pub fn emit_crate(spec: &ApiSpec, output_dir: &Path) -> Result<EmitReport> {
         &cargo::render(spec),
         &mut report,
     )?;
-    write_file(&src_dir.join("lib.rs"), &rust_lib::render(spec), &mut report)?;
+    write_file(
+        &src_dir.join("lib.rs"),
+        &rust_lib::render(spec),
+        &mut report,
+    )?;
     write_file(
         &src_dir.join("main.rs"),
         &rust_cli::render(spec),
         &mut report,
     )?;
-    write_file(&output_dir.join("SKILL.md"), &skill::render(spec), &mut report)?;
+    write_file(
+        &output_dir.join("SKILL.md"),
+        &skill::render(spec),
+        &mut report,
+    )?;
     write_file(
         &output_dir.join("mcp.json"),
         &mcp::render(spec)?,

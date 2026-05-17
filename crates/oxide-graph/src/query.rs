@@ -45,7 +45,11 @@ impl NodeQuery {
         };
         Ok(candidates
             .into_iter()
-            .filter(|n| self.property_eq.iter().all(|(k, v)| n.properties.get(k) == Some(v)))
+            .filter(|n| {
+                self.property_eq
+                    .iter()
+                    .all(|(k, v)| n.properties.get(k) == Some(v))
+            })
             .collect())
     }
 }
@@ -157,9 +161,15 @@ mod tests {
         .unwrap();
         g.upsert_node(Node::new("owner:1", "owner")).await.unwrap();
         g.upsert_node(Node::new("owner:2", "owner")).await.unwrap();
-        g.add_edge(Edge::new("owner:1", "pet:1", "owns")).await.unwrap();
-        g.add_edge(Edge::new("owner:2", "pet:2", "owns")).await.unwrap();
-        g.add_edge(Edge::new("owner:1", "owner:2", "knows")).await.unwrap();
+        g.add_edge(Edge::new("owner:1", "pet:1", "owns"))
+            .await
+            .unwrap();
+        g.add_edge(Edge::new("owner:2", "pet:2", "owns"))
+            .await
+            .unwrap();
+        g.add_edge(Edge::new("owner:1", "owner:2", "knows"))
+            .await
+            .unwrap();
         g
     }
 

@@ -96,11 +96,7 @@ async fn handle_connection(socket: TcpStream, local: LocalMesh) -> Result<()> {
             }
         };
         // Auto-join on first Hello so the peer participates in routing.
-        if let PeerMessage::Hello {
-            from,
-            capabilities,
-        } = &msg
-        {
+        if let PeerMessage::Hello { from, capabilities } = &msg {
             sender_id = Some(from.clone());
             let _ = local
                 .join(from.clone(), capabilities.clone(), Vec::new())
@@ -139,8 +135,7 @@ mod tests {
     #[tokio::test]
     async fn tcp_round_trip_delivers_broadcast() {
         let local = LocalMesh::new();
-        let (mut listener_handle, _h) =
-            local.join("listener", caps("x"), vec![]).await.unwrap();
+        let (mut listener_handle, _h) = local.join("listener", caps("x"), vec![]).await.unwrap();
 
         let server = TcpMesh::new(local.clone());
         let listener = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))
@@ -150,17 +145,12 @@ mod tests {
         // Spawn an accept loop manually so we can shut down cleanly.
         let local_clone = local.clone();
         let accept_task = tokio::spawn(async move {
-            let _ = server; // server.serve binds again; we use the explicit listener instead
-            loop {
-                match listener.accept().await {
-                    Ok((socket, _)) => {
-                        let local = local_clone.clone();
-                        tokio::spawn(async move {
-                            let _ = handle_connection(socket, local).await;
-                        });
-                    }
-                    Err(_) => break,
-                }
+            let _ = server; // bind happens via the explicit listener above
+            while let Ok((socket, _)) = listener.accept().await {
+                let local = local_clone.clone();
+                tokio::spawn(async move {
+                    let _ = handle_connection(socket, local).await;
+                });
             }
         });
 

@@ -216,7 +216,10 @@ mod tests {
             peer_c.receiver.recv(),
         )
         .await;
-        assert!(no_msg.is_err(), "peer c should not have received the direct");
+        assert!(
+            no_msg.is_err(),
+            "peer c should not have received the direct"
+        );
     }
 
     #[tokio::test]
@@ -236,19 +239,17 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(tokio::time::timeout(
-            std::time::Duration::from_millis(200),
-            pb.receiver.recv()
-        )
-        .await
-        .unwrap()
-        .is_some());
-        assert!(tokio::time::timeout(
-            std::time::Duration::from_millis(100),
-            pc.receiver.recv()
-        )
-        .await
-        .is_err());
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(200), pb.receiver.recv())
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), pc.receiver.recv())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

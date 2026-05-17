@@ -262,11 +262,8 @@ mod tests {
 
         let mut saw = false;
         for _ in 0..10 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(500),
-                sub.receiver.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(500), sub.receiver.recv())
+                .await
             {
                 Ok(Some(env)) => {
                     if let Message::Event(Event::Custom { kind, payload, .. }) = env.message {
@@ -312,11 +309,8 @@ mod tests {
 
         let mut saw = false;
         for _ in 0..10 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(500),
-                sub.receiver.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(500), sub.receiver.recv())
+                .await
             {
                 Ok(Some(env)) => {
                     if let Message::Event(Event::Custom { kind, payload, .. }) = env.message {

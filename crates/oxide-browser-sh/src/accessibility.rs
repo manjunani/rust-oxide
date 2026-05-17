@@ -164,11 +164,7 @@ fn synthesize(el: ElementRef<'_>) -> Option<AxNode> {
         "p" => ("paragraph".to_string(), Some(text), None),
         // Honour an explicit ARIA role override even on otherwise-unknown
         // elements (e.g. `<div role="dialog">`).
-        _ if aria_role.is_some() => (
-            aria_role.clone().unwrap(),
-            aria_label.or_else(|| Some(text)),
-            None,
-        ),
+        _ if aria_role.is_some() => (aria_role.clone().unwrap(), aria_label.or(Some(text)), None),
         _ => return None,
     };
 

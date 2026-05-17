@@ -183,7 +183,10 @@ mod tests {
         let s = LastWriteWins;
         let existing = rec(json!({"a": 1}), 1.0);
         let incoming = delta(json!({"a": 2}), 0.1);
-        assert!(matches!(s.resolve(Some(&existing), &incoming), ConflictResolution::Apply));
+        assert!(matches!(
+            s.resolve(Some(&existing), &incoming),
+            ConflictResolution::Apply
+        ));
     }
 
     #[test]
@@ -191,9 +194,15 @@ mod tests {
         let s = HighestConfidence;
         let existing = rec(json!({"a": 1}), 0.9);
         let incoming = delta(json!({"a": 2}), 0.5);
-        assert!(matches!(s.resolve(Some(&existing), &incoming), ConflictResolution::Skip));
+        assert!(matches!(
+            s.resolve(Some(&existing), &incoming),
+            ConflictResolution::Skip
+        ));
         let incoming2 = delta(json!({"a": 3}), 0.95);
-        assert!(matches!(s.resolve(Some(&existing), &incoming2), ConflictResolution::Apply));
+        assert!(matches!(
+            s.resolve(Some(&existing), &incoming2),
+            ConflictResolution::Apply
+        ));
     }
 
     #[test]
@@ -201,8 +210,14 @@ mod tests {
         let s = KeepLocal;
         let existing = rec(json!({}), 1.0);
         let incoming = delta(json!({}), 1.0);
-        assert!(matches!(s.resolve(Some(&existing), &incoming), ConflictResolution::Skip));
-        assert!(matches!(s.resolve(None, &incoming), ConflictResolution::Apply));
+        assert!(matches!(
+            s.resolve(Some(&existing), &incoming),
+            ConflictResolution::Skip
+        ));
+        assert!(matches!(
+            s.resolve(None, &incoming),
+            ConflictResolution::Apply
+        ));
     }
 
     #[test]

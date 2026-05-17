@@ -149,7 +149,10 @@ fn walk(el: ElementRef<'_>, out: &mut String, list_depth: usize) {
             let lang = code
                 .as_ref()
                 .and_then(|c| c.value().attr("class"))
-                .and_then(|c| c.split_whitespace().find_map(|t| t.strip_prefix("language-")))
+                .and_then(|c| {
+                    c.split_whitespace()
+                        .find_map(|t| t.strip_prefix("language-"))
+                })
                 .unwrap_or("");
             let body = match code {
                 Some(c) => c.text().collect::<String>(),

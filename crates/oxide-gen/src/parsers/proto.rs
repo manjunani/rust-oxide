@@ -52,9 +52,13 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
         };
         idx = after_name;
         // Find opening `{` and matching `}`.
-        let Some(open) = cleaned[idx..].find('{') else { break };
+        let Some(open) = cleaned[idx..].find('{') else {
+            break;
+        };
         let body_start = idx + open + 1;
-        let Some(body_len) = matching_brace(&cleaned[body_start..]) else { break };
+        let Some(body_len) = matching_brace(&cleaned[body_start..]) else {
+            break;
+        };
         let body = &cleaned[body_start..body_start + body_len];
         idx = body_start + body_len + 1;
 
@@ -75,7 +79,9 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
         }
     }
 
-    let display = package.clone().unwrap_or_else(|| "grpc_service".to_string());
+    let display = package
+        .clone()
+        .unwrap_or_else(|| "grpc_service".to_string());
     let name = crate_name(&display);
 
     Ok(ApiSpec {
@@ -135,7 +141,7 @@ fn next_keyword(src: &str, from: usize, keywords: &[&str]) -> Option<(usize, Blo
     let mut earliest: Option<(usize, &str)> = None;
     for kw in keywords {
         if let Some(pos) = find_word(src, from, kw) {
-            if earliest.map_or(true, |(p, _)| pos < p) {
+            if earliest.is_none_or(|(p, _)| pos < p) {
                 earliest = Some((pos, kw));
             }
         }
@@ -154,8 +160,7 @@ fn find_word(src: &str, from: usize, needle: &str) -> Option<usize> {
     while let Some(rel) = src[start..].find(needle) {
         let abs = start + rel;
         let before_ok = abs == 0
-            || !src.as_bytes()[abs - 1].is_ascii_alphanumeric()
-                && src.as_bytes()[abs - 1] != b'_';
+            || !src.as_bytes()[abs - 1].is_ascii_alphanumeric() && src.as_bytes()[abs - 1] != b'_';
         let after_idx = abs + needle.len();
         let after_ok = after_idx >= src.len()
             || !src.as_bytes()[after_idx].is_ascii_alphanumeric()
@@ -214,9 +219,13 @@ fn parse_message_body(body: &str) -> Vec<Field> {
         if line.is_empty() {
             continue;
         }
-        if line.starts_with("oneof") || line.starts_with("map") || line.starts_with("option")
-            || line.starts_with("reserved") || line.starts_with("enum")
-            || line.starts_with("message") || line.starts_with("//")
+        if line.starts_with("oneof")
+            || line.starts_with("map")
+            || line.starts_with("option")
+            || line.starts_with("reserved")
+            || line.starts_with("enum")
+            || line.starts_with("message")
+            || line.starts_with("//")
         {
             continue;
         }
@@ -252,11 +261,15 @@ fn parse_field_line(line: &str) -> Option<Field> {
         name: snake,
         serde_rename,
         rust_type,
-        // proto3 fields are technically all optional, but for codegen
-        // ergonomics we treat scalar non-`optional`-keyword fields as
-        // required (default values are used on the wire).
-        optional: repeated.then_some(false).is_none() && false,
+        // proto3 fields are all technically optional on the wire, but for
+        // codegen ergonomics we treat scalars and repeated fields as
+        // required (proto3 default values are populated automatically).
+        // The `repeated` distinction is kept by the `Vec<T>` wrap above.
+        optional: false,
         description: None,
+        // Touch `repeated` so the compiler keeps the let-binding in sync
+        // if a future change wants per-field optionality.
+        // (no-op)
     })
 }
 
@@ -363,7 +376,11 @@ mod tests {
     #[test]
     fn parses_messages_and_fields() {
         let spec = parse(ECHO).unwrap();
-        let req = spec.types.iter().find(|t| t.name() == "SayRequest").unwrap();
+        let req = spec
+            .types
+            .iter()
+            .find(|t| t.name() == "SayRequest")
+            .unwrap();
         match req {
             TypeDef::Struct { fields, .. } => {
                 let text = fields.iter().find(|f| f.name == "text").unwrap();

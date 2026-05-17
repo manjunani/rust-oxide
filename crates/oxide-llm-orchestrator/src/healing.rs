@@ -11,9 +11,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use oxide_browser_sh::action::Selector;
-use oxide_browser_sh::healing::{
-    DefaultHealing, HealingContext, HealingDecision, HealingStrategy,
-};
+use oxide_browser_sh::healing::{DefaultHealing, HealingContext, HealingDecision, HealingStrategy};
 use serde::Deserialize;
 
 use crate::client::{LlmClient, MockLlmClient};

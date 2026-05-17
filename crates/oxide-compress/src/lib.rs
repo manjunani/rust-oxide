@@ -353,7 +353,11 @@ fn pack_words(text: &str, max_len: usize) -> Vec<String> {
             packed.extend(hard_slice(word, max_len));
             continue;
         }
-        let needed = if current.is_empty() { word_len } else { current.chars().count() + 1 + word_len };
+        let needed = if current.is_empty() {
+            word_len
+        } else {
+            current.chars().count() + 1 + word_len
+        };
         if needed > max_len {
             packed.push(std::mem::take(&mut current));
             current.push_str(word);

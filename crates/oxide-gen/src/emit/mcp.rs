@@ -13,7 +13,11 @@ use crate::ir::{ApiSpec, Operation, ParamLocation};
 pub fn render(spec: &ApiSpec) -> Result<String> {
     let bin = format!("{}-cli", spec.name.replace('_', "-"));
 
-    let tools: Vec<Value> = spec.operations.iter().map(|op| tool_for(&bin, op)).collect();
+    let tools: Vec<Value> = spec
+        .operations
+        .iter()
+        .map(|op| tool_for(&bin, op))
+        .collect();
 
     let cfg = json!({
         "name": spec.name.replace('_', "-"),
@@ -66,7 +70,10 @@ fn tool_for(bin: &str, op: &Operation) -> Value {
 
 fn json_schema_type(rust_ty: &str) -> &'static str {
     if rust_ty.starts_with("Option<") || rust_ty.starts_with("Vec<") {
-        return match rust_ty.trim_start_matches("Option<").trim_start_matches("Vec<") {
+        return match rust_ty
+            .trim_start_matches("Option<")
+            .trim_start_matches("Vec<")
+        {
             t if t.starts_with("i") || t.starts_with("u") => "integer",
             t if t.starts_with("f") => "number",
             "bool>" | "bool" => "boolean",

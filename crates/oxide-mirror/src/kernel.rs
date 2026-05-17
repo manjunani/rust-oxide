@@ -181,7 +181,11 @@ async fn dispatch(
             let p: ListRecordsPayload = serde_json::from_value(payload)?;
             let recs = {
                 let syncer = syncer.lock().await;
-                syncer.store().list_records(&p.resource).await.map_err(to_kernel)?
+                syncer
+                    .store()
+                    .list_records(&p.resource)
+                    .await
+                    .map_err(to_kernel)?
             };
             Ok(serde_json::to_value(recs)?)
         }
@@ -245,11 +249,8 @@ mod tests {
 
         let mut saw_sync_ok = false;
         for _ in 0..10 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(500),
-                sub.receiver.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(500), sub.receiver.recv())
+                .await
             {
                 Ok(Some(env)) => {
                     if let Message::Event(Event::Custom { kind, payload, .. }) = env.message {
@@ -282,11 +283,8 @@ mod tests {
 
         let mut saw_query_ok = false;
         for _ in 0..10 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(500),
-                sub.receiver.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(500), sub.receiver.recv())
+                .await
             {
                 Ok(Some(env)) => {
                     if let Message::Event(Event::Custom { kind, payload, .. }) = env.message {

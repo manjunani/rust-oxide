@@ -22,12 +22,14 @@
 #![deny(rust_2018_idioms)]
 #![warn(missing_docs)]
 
+pub mod crdt;
 pub mod error;
 pub mod kernel;
 pub mod local;
 pub mod message;
 pub mod tcp;
 
+pub use crdt::{GSet, LwwRegister, PnCounter};
 pub use error::{MeshError, Result};
 pub use kernel::MeshModule;
 pub use local::{LocalMesh, MeshHandle, PeerHandle};

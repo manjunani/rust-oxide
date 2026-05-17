@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  # 1. Cross-platform binary builds.
+  build-binaries:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cross-compilation toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          mkdir -p .cargo
+          printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n' > .cargo/config.toml
+
+      - name: Build release binaries
+        run: |
+          cargo build --release --target ${{ matrix.target }} \
+            -p oxide-k \
+            -p oxide-gen \
+            -p oxide-mcp-server
+
+      - name: Package artefact
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ver="${GITHUB_REF_NAME#v}"
+          stage="rust-oxide-${ver}-${{ matrix.target }}"
+          mkdir -p "${stage}"
+          cp README.md CHANGELOG.md CONTRIBUTING.md LICENSE-MIT LICENSE-APACHE "${stage}/" || true
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            for bin in oxide-k oxide-gen oxide-mcp-server; do
+              cp "target/${{ matrix.target }}/release/${bin}.exe" "${stage}/${bin}.exe"
+            done
+            7z a -tzip "${stage}.zip" "${stage}"
+            echo "ASSET=${stage}.zip" >> "$GITHUB_ENV"
+          else
+            for bin in oxide-k oxide-gen oxide-mcp-server; do
+              cp "target/${{ matrix.target }}/release/${bin}" "${stage}/${bin}"
+            done
+            tar czf "${stage}.tar.gz" "${stage}"
+            echo "ASSET=${stage}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+
+  # 2. Build the WASM artefact for the release.
+  build-wasm:
+    name: build wasm artefact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - run: wasm-pack build crates/oxide-compress --target web --release
+      - name: Package wasm
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          (cd crates/oxide-compress && tar czf "oxide-compress-${ver}-wasm.tar.gz" pkg)
+          echo "ASSET=oxide-compress-${ver}-wasm.tar.gz" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: crates/oxide-compress/${{ env.ASSET }}
+
+  # 3. Publish the GitHub Release with every artefact attached.
+  github-release:
+    name: github release
+    runs-on: ubuntu-latest
+    needs: [build-binaries, build-wasm]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+      - name: Flatten artefacts
+        run: |
+          mkdir -p dist
+          find artefacts -type f -name "*.tar.gz" -o -name "*.zip" | xargs -I{} cp {} dist/
+          ls -al dist
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+
+  # 4. Publish to crates.io in dependency order.
+  crates-io:
+    name: cargo publish
+    runs-on: ubuntu-latest
+    needs: [build-binaries]
+    if: ${{ vars.SKIP_CRATES_IO != 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish (dependency order)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          set -euxo pipefail
+          for crate in oxide-k oxide-compress oxide-gen oxide-browser-sh \
+                       oxide-mirror oxide-llm-orchestrator oxide-mcp-server \
+                       oxide-graph oxide-mesh; do
+            (cd "crates/${crate}" && cargo publish --token "${CARGO_REGISTRY_TOKEN}" --no-verify) \
+              || echo "::warning::cargo publish failed for ${crate} — likely already published or unchanged"
+            sleep 30
+          done

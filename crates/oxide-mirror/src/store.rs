@@ -157,7 +157,10 @@ impl MirrorStore {
         let rows = sqlx::query("SELECT name FROM mirror_resources ORDER BY name")
             .fetch_all(&self.pool)
             .await?;
-        Ok(rows.into_iter().map(|r| r.get::<String, _>("name")).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| r.get::<String, _>("name"))
+            .collect())
     }
 
     // -----------------------------------------------------------------------
@@ -359,13 +362,12 @@ impl MirrorStore {
 
     /// Get the cursor for `(source, resource)`, if one has been persisted.
     pub async fn get_cursor(&self, source: &str, resource: &str) -> Result<Option<String>> {
-        let row = sqlx::query(
-            "SELECT cursor FROM mirror_cursors WHERE source = ?1 AND resource = ?2",
-        )
-        .bind(source)
-        .bind(resource)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row =
+            sqlx::query("SELECT cursor FROM mirror_cursors WHERE source = ?1 AND resource = ?2")
+                .bind(source)
+                .bind(resource)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row.and_then(|r| r.try_get::<Option<String>, _>("cursor").ok().flatten()))
     }
 
@@ -477,7 +479,7 @@ fn row_to_json(row: &SqliteRow) -> Result<serde_json::Map<String, Value>> {
             // without a static declaration — most notably computed columns
             // like `COUNT(*)` or `1 + 1`. The actual cell value may be a
             // real integer / text / blob, so probe rather than short-circuit.
-            "NULL" | _ => probe_any(row, i),
+            _ => probe_any(row, i),
         };
         obj.insert(name, value);
     }
@@ -600,10 +602,8 @@ mod tests {
     #[tokio::test]
     async fn highest_confidence_skips_lower() {
         let store = MirrorStore::in_memory().await.unwrap();
-        let d1 = upsert("pets", "1", json!({"name": "Rex"}), "high")
-            .with_confidence(0.9);
-        let d2 = upsert("pets", "1", json!({"name": "Wrong"}), "low")
-            .with_confidence(0.2);
+        let d1 = upsert("pets", "1", json!({"name": "Rex"}), "high").with_confidence(0.9);
+        let d2 = upsert("pets", "1", json!({"name": "Wrong"}), "low").with_confidence(0.2);
 
         store.apply_delta(&d1, &HighestConfidence).await.unwrap();
         let out2 = store.apply_delta(&d2, &HighestConfidence).await.unwrap();
@@ -709,7 +709,10 @@ mod tests {
     async fn cursor_round_trips() {
         let store = MirrorStore::in_memory().await.unwrap();
         assert!(store.get_cursor("src", "pets").await.unwrap().is_none());
-        store.set_cursor("src", "pets", Some("page-42")).await.unwrap();
+        store
+            .set_cursor("src", "pets", Some("page-42"))
+            .await
+            .unwrap();
         assert_eq!(
             store.get_cursor("src", "pets").await.unwrap().as_deref(),
             Some("page-42")

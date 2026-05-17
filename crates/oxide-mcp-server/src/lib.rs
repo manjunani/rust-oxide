@@ -27,6 +27,4 @@ pub mod tool;
 pub use error::{McpError, Result};
 pub use rpc::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, RpcId};
 pub use server::{McpServer, ServerInfo};
-pub use tool::{
-    BusTool, CliTool, Tool, ToolDescriptor, ToolInputSchema, ToolRegistry,
-};
+pub use tool::{BusTool, CliTool, Tool, ToolDescriptor, ToolInputSchema, ToolRegistry};

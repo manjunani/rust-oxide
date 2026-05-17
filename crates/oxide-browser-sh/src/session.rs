@@ -165,7 +165,9 @@ impl BrowserSession {
                         break;
                     }
                     // Otherwise: ask the healing strategy for an alternative.
-                    let ctx = self.capture_context(action_name, &selector, attempt, &err).await;
+                    let ctx = self
+                        .capture_context(action_name, &selector, attempt, &err)
+                        .await;
                     let decision = self.healing.heal(&ctx).await;
                     match decision {
                         HealingDecision::Retry(new_sel) => {
@@ -210,7 +212,8 @@ impl BrowserSession {
     ) -> HealingContext {
         let url = self.backend.url().await.ok();
         let html = self.backend.html().await.unwrap_or_default();
-        let screenshot_available = matches!(self.backend.screenshot().await, Ok(b) if !b.is_empty());
+        let screenshot_available =
+            matches!(self.backend.screenshot().await, Ok(b) if !b.is_empty());
         HealingContext {
             action: action_name.to_string(),
             selector: selector.clone(),
@@ -249,16 +252,9 @@ mod tests {
         mock.register_page("/", HTML);
         let session = session_with(mock.clone());
         session.navigate("/").await.unwrap();
-        session
-            .click(&Selector::css("#cta"))
-            .await
-            .unwrap();
+        session.click(&Selector::css("#cta")).await.unwrap();
         let stats = session.stats();
-        let click = stats
-            .history
-            .iter()
-            .find(|r| r.action == "click")
-            .unwrap();
+        let click = stats.history.iter().find(|r| r.action == "click").unwrap();
         assert!(click.ok);
         assert_eq!(click.attempts, 1);
         assert_eq!(stats.healing_retries, 0);
@@ -277,11 +273,7 @@ mod tests {
 
         let stats = session.stats();
         assert_eq!(stats.healing_retries, 1);
-        let click = stats
-            .history
-            .iter()
-            .find(|r| r.action == "click")
-            .unwrap();
+        let click = stats.history.iter().find(|r| r.action == "click").unwrap();
         assert!(click.ok);
         assert!(click.attempts >= 2);
     }
@@ -308,8 +300,7 @@ mod tests {
     async fn llm_stub_strategy_is_pluggable() {
         let mock = Arc::new(MockBackend::new());
         mock.register_page("/", HTML);
-        let session =
-            BrowserSession::new(mock.clone(), Arc::new(LlmStubHealing::new()));
+        let session = BrowserSession::new(mock.clone(), Arc::new(LlmStubHealing::new()));
         session.navigate("/").await.unwrap();
         session
             .click(&Selector::role_named("button", "Get started"))

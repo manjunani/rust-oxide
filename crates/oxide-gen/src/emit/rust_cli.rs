@@ -19,7 +19,11 @@ pub fn render(spec: &ApiSpec) -> String {
     writeln!(out, "//!").unwrap();
     writeln!(out, "//! Re-run `oxide-gen` to regenerate.").unwrap();
     writeln!(out).unwrap();
-    writeln!(out, "#![allow(clippy::all, dead_code, unused_imports, unused_variables, unused_mut)]").unwrap();
+    writeln!(
+        out,
+        "#![allow(clippy::all, dead_code, unused_imports, unused_variables, unused_mut)]"
+    )
+    .unwrap();
     writeln!(out).unwrap();
     writeln!(out, "use clap::{{Parser, Subcommand}};").unwrap();
     writeln!(out, "use {}::*;", spec.name).unwrap();
@@ -109,12 +113,7 @@ fn render_arg(out: &mut String, p: &Param) {
         }
     };
     if !is_simple {
-        writeln!(
-            out,
-            "        /// JSON-encoded `{}` value.",
-            p.rust_type
-        )
-        .unwrap();
+        writeln!(out, "        /// JSON-encoded `{}` value.", p.rust_type).unwrap();
     }
     writeln!(out, "        #[arg(long)]").unwrap();
     writeln!(out, "        {}: {},", p.name, ty).unwrap();

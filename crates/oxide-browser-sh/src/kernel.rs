@@ -59,8 +59,7 @@ impl Module for BrowserModule {
             version: env!("CARGO_PKG_VERSION").into(),
             kind: ModuleKind::Native,
             description: Some(
-                "Self-healing browser automation; routes bus commands to a BrowserSession."
-                    .into(),
+                "Self-healing browser automation; routes bus commands to a BrowserSession.".into(),
             ),
         }
     }
@@ -74,7 +73,9 @@ impl Module for BrowserModule {
         let id = self.id.clone();
         let handle = tokio::spawn(async move {
             while let Some(envelope) = subscription.receiver.recv().await {
-                let Message::Command(cmd) = envelope.message else { continue };
+                let Message::Command(cmd) = envelope.message else {
+                    continue;
+                };
                 let Command::Invoke {
                     module_id,
                     method,
@@ -258,11 +259,8 @@ mod tests {
         // Drain envelopes until we hit our navigate.ok event.
         let mut saw_ok = false;
         for _ in 0..10 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(500),
-                sub.receiver.recv(),
-            )
-            .await
+            match tokio::time::timeout(std::time::Duration::from_millis(500), sub.receiver.recv())
+                .await
             {
                 Ok(Some(env)) => {
                     if let Message::Event(Event::Custom { kind, .. }) = env.message {

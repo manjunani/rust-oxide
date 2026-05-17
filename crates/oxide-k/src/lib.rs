@@ -31,5 +31,8 @@ pub mod module;
 pub mod registry;
 pub mod xai;
 
+#[cfg(feature = "wasmtime-runtime")]
+pub mod wasm_exec;
+
 pub use error::{KernelError, Result};
 pub use kernel::Kernel;

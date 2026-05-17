@@ -120,9 +120,8 @@ impl McpServer {
                     arguments: Option<serde_json::Value>,
                 }
                 let params: CallParams = match request.params.as_ref() {
-                    Some(p) => serde_json::from_value(p.clone()).map_err(|e| {
-                        (codes::INVALID_PARAMS, format!("bad call params: {e}"))
-                    })?,
+                    Some(p) => serde_json::from_value(p.clone())
+                        .map_err(|e| (codes::INVALID_PARAMS, format!("bad call params: {e}")))?,
                     None => {
                         return Err((
                             codes::INVALID_PARAMS,
@@ -130,10 +129,12 @@ impl McpServer {
                         ));
                     }
                 };
-                let tool = self
-                    .registry
-                    .get(&params.name)
-                    .ok_or_else(|| (codes::METHOD_NOT_FOUND, format!("unknown tool `{}`", params.name)))?;
+                let tool = self.registry.get(&params.name).ok_or_else(|| {
+                    (
+                        codes::METHOD_NOT_FOUND,
+                        format!("unknown tool `{}`", params.name),
+                    )
+                })?;
                 match tool
                     .invoke(params.arguments.unwrap_or_else(|| serde_json::json!({})))
                     .await
@@ -153,16 +154,11 @@ impl McpServer {
             }
 
             // Acknowledge MCP lifecycle notifications without doing anything.
-            "notifications/initialized" | "notifications/cancelled" => {
-                Ok(serde_json::json!(null))
-            }
+            "notifications/initialized" | "notifications/cancelled" => Ok(serde_json::json!(null)),
 
             "ping" => Ok(serde_json::json!({"pong": true})),
 
-            other => Err((
-                codes::METHOD_NOT_FOUND,
-                format!("unknown method `{other}`"),
-            )),
+            other => Err((codes::METHOD_NOT_FOUND, format!("unknown method `{other}`"))),
         }
     }
 
@@ -268,7 +264,10 @@ mod tests {
         }"#;
         let resp = server.handle_line(req).await.unwrap();
         let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
-        assert_eq!(v["error"]["code"], serde_json::json!(codes::METHOD_NOT_FOUND));
+        assert_eq!(
+            v["error"]["code"],
+            serde_json::json!(codes::METHOD_NOT_FOUND)
+        );
     }
 
     #[tokio::test]
@@ -292,6 +291,9 @@ mod tests {
         let req = r#"{"jsonrpc":"2.0","method":"bogus","id":7}"#;
         let resp = server.handle_line(req).await.unwrap();
         let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
-        assert_eq!(v["error"]["code"], serde_json::json!(codes::METHOD_NOT_FOUND));
+        assert_eq!(
+            v["error"]["code"],
+            serde_json::json!(codes::METHOD_NOT_FOUND)
+        );
     }
 }

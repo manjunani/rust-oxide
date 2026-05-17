@@ -88,7 +88,7 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
                         evd.enum_value_definitions().map(|v| {
                             let original = node_name(v.enum_value().and_then(|ev| ev.name()));
                             let pascal = pascal_ident(&original);
-                            let serde_rename = (pascal != original).then(|| original);
+                            let serde_rename = (pascal != original).then_some(original);
                             EnumVariant {
                                 name: pascal,
                                 serde_rename,
@@ -104,7 +104,12 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
             }
             Definition::ScalarTypeDefinition(s) => {
                 let name = node_name(s.name());
-                if name == "ID" || name == "String" || name == "Int" || name == "Float" || name == "Boolean" {
+                if name == "ID"
+                    || name == "String"
+                    || name == "Int"
+                    || name == "Float"
+                    || name == "Boolean"
+                {
                     continue;
                 }
                 types.push(TypeDef::Alias {
@@ -144,12 +149,17 @@ fn object_fields(fd: Option<cst::FieldsDefinition>) -> Vec<Field> {
         .map(|field| {
             let raw_name = node_name(field.name());
             let snake = snake_ident(&raw_name);
-            let serde_rename = (snake.trim_start_matches("r#") != raw_name).then(|| raw_name.clone());
+            let serde_rename =
+                (snake.trim_start_matches("r#") != raw_name).then(|| raw_name.clone());
             let (inner, required) = field
                 .ty()
                 .map(|t| render_type(&t))
                 .unwrap_or_else(|| ("serde_json::Value".to_string(), false));
-            let rust_type = if required { inner } else { format!("Option<{inner}>") };
+            let rust_type = if required {
+                inner
+            } else {
+                format!("Option<{inner}>")
+            };
             Field {
                 name: snake,
                 serde_rename,
@@ -176,7 +186,11 @@ fn input_value_to_field(ivd: InputValueDefinition) -> Field {
         .ty()
         .map(|t| render_type(&t))
         .unwrap_or_else(|| ("serde_json::Value".to_string(), false));
-    let rust_type = if required { inner } else { format!("Option<{inner}>") };
+    let rust_type = if required {
+        inner
+    } else {
+        format!("Option<{inner}>")
+    };
     Field {
         name: snake,
         serde_rename,
@@ -312,14 +326,26 @@ mod tests {
     #[test]
     fn extracts_query_and_mutation_ops() {
         let spec = parse(SCHEMA).unwrap();
-        let ops: Vec<_> = spec.operations.iter().map(|o| o.original_id.as_str()).collect();
+        let ops: Vec<_> = spec
+            .operations
+            .iter()
+            .map(|o| o.original_id.as_str())
+            .collect();
         assert!(ops.contains(&"user"));
         assert!(ops.contains(&"posts"));
         assert!(ops.contains(&"createPost"));
 
-        let user_op = spec.operations.iter().find(|o| o.original_id == "user").unwrap();
+        let user_op = spec
+            .operations
+            .iter()
+            .find(|o| o.original_id == "user")
+            .unwrap();
         assert_eq!(user_op.protocol, Protocol::GraphQl);
-        let id_arg = user_op.params.iter().find(|p| p.original_name == "id").unwrap();
+        let id_arg = user_op
+            .params
+            .iter()
+            .find(|p| p.original_name == "id")
+            .unwrap();
         assert!(id_arg.required);
         assert_eq!(id_arg.location, ParamLocation::GraphQlVariable);
         assert_eq!(user_op.streaming, StreamingMode::Unary);
