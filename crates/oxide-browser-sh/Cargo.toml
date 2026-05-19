@@ -13,11 +13,16 @@ name = "oxide_browser_sh"
 path = "src/lib.rs"
 
 [features]
+# Default ships only the mock backend + AX/healing/extract logic. This keeps
+# default builds slim — `chromiumoxide` and its substantial async-tungstenite
+# / hyper-rustls / web-time / etc. transitive tree only compile when callers
+# opt in via the `chromium` feature.
 default = []
-# Enable the chromiumoxide-backed real-browser tests. They are off by
-# default because they require a working Chromium / Chrome install on the
-# host. Run them with `cargo test -p oxide-browser-sh --features live-browser`.
-live-browser = []
+chromium = ["dep:chromiumoxide", "dep:futures"]
+# Real-browser tests require Chromium / Chrome on PATH. They auto-enable the
+# `chromium` feature too. Run with
+# `cargo test -p oxide-browser-sh --features live-browser -- --ignored`.
+live-browser = ["chromium"]
 
 [dependencies]
 tokio = { workspace = true }
@@ -27,8 +32,8 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }
-chromiumoxide = { workspace = true }
-futures = { workspace = true }
+chromiumoxide = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
 scraper = { workspace = true }
 
 oxide-k = { path = "../oxide-k" }

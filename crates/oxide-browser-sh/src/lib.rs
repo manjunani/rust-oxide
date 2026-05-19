@@ -37,6 +37,7 @@
 pub mod accessibility;
 pub mod action;
 pub mod backend;
+#[cfg(feature = "chromium")]
 pub mod chromium;
 pub mod error;
 pub mod extract;

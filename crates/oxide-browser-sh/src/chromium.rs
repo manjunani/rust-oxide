@@ -61,10 +61,12 @@ impl ChromiumBackend {
     /// Translate a [`Selector`] into a CSS string the chromiumoxide API will
     /// accept. Role / text selectors are resolved by snapshotting the page's
     /// HTML and walking the synthesized accessibility tree for a `css_hint`.
+    /// XPath selectors are resolved live in the page via `document.evaluate`
+    /// — the script returns a unique CSS path to the first matching element.
     async fn resolve_to_css(&self, selector: &Selector) -> Result<String> {
         match selector {
             Selector::Css(s) => Ok(s.clone()),
-            Selector::XPath(_) => Err(BrowserError::Unsupported("xpath")),
+            Selector::XPath(xpath) => self.xpath_to_css(xpath).await,
             Selector::Role { .. } | Selector::Text(_) => {
                 let html = self.html().await?;
                 let tree = AxNode::from_html(&html);
@@ -77,6 +79,54 @@ impl ChromiumBackend {
                     .ok_or_else(|| BrowserError::NotFound(selector.clone()))
             }
         }
+    }
+
+    /// Resolve an XPath expression into a CSS path via an in-page JS shim.
+    ///
+    /// The shim walks ancestors from the matched element back to the document
+    /// root, building `tag[:nth-of-type(N)]` segments. CSS / XPath selectors
+    /// produce identical downstream behaviour after this hop, so the same
+    /// `find_element` call serves all four selector kinds.
+    async fn xpath_to_css(&self, xpath: &str) -> Result<String> {
+        let page = self.ensure_page().await?;
+        let script = format!(
+            r#"
+            (function () {{
+                const r = document.evaluate(
+                    {xpath_lit},
+                    document,
+                    null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE,
+                    null
+                );
+                const el = r.singleNodeValue;
+                if (!el) return null;
+                if (el.id) return '#' + CSS.escape(el.id);
+                const segs = [];
+                let n = el;
+                while (n && n.nodeType === 1 && n !== document.documentElement) {{
+                    let tag = n.nodeName.toLowerCase();
+                    const sibs = Array.from(n.parentNode ? n.parentNode.children : [])
+                        .filter(s => s.nodeName === n.nodeName);
+                    if (sibs.length > 1) {{
+                        const idx = sibs.indexOf(n) + 1;
+                        tag += ':nth-of-type(' + idx + ')';
+                    }}
+                    segs.unshift(tag);
+                    n = n.parentElement;
+                }}
+                return 'html > ' + segs.join(' > ');
+            }})()
+            "#,
+            xpath_lit = serde_json::to_string(xpath).unwrap()
+        );
+        let value: Option<String> = page
+            .evaluate(script)
+            .await
+            .map_err(|e| BrowserError::Chromium(e.to_string()))?
+            .into_value()
+            .map_err(|e| BrowserError::Chromium(e.to_string()))?;
+        value.ok_or_else(|| BrowserError::NotFound(Selector::XPath(xpath.to_string())))
     }
 
     async fn ensure_page(&self) -> Result<Page> {
@@ -287,14 +337,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn xpath_selector_is_unsupported() {
-        // No browser needed: assert the trait method's plumbing without
-        // launching Chromium. We construct nothing; the type-system signal
-        // alone is enough.
+    fn xpath_selector_is_accepted() {
+        // No browser needed — confirm the type carries cleanly through the
+        // public API. The actual resolution path (document.evaluate → CSS)
+        // requires a live Chromium and is exercised by the `live-browser`
+        // gated test below.
         let _ = std::mem::size_of::<ChromiumBackend>();
-        // resolve_to_css returns Unsupported for XPath. We can only run the
-        // async path with a launched browser; the assertion lives in
-        // `live-browser` gated tests below.
         let sel = Selector::XPath("//button".into());
         assert!(matches!(sel, Selector::XPath(_)));
     }

@@ -23,6 +23,7 @@
 #![deny(rust_2018_idioms)]
 #![warn(missing_docs)]
 
+pub mod budget;
 pub mod client;
 pub mod error;
 pub mod healing;
@@ -30,9 +31,10 @@ pub mod kernel;
 pub mod prompts;
 pub mod summarize;
 
+pub use budget::{BudgetCaps, BudgetGuard, BudgetState, ModelRate, Pricing};
 pub use client::{
-    ChatMessage, ChatRequest, ChatResponse, ChatRole, LlmClient, MockLlmClient, OpenAiClient,
-    ResponseFormat,
+    ChatMessage, ChatRequest, ChatResponse, ChatRole, CompletionStream, LlmClient, MockLlmClient,
+    OpenAiClient, ResponseFormat, ToolCall, ToolSpec,
 };
 pub use error::{LlmError, Result};
 pub use healing::LlmHealing;

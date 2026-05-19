@@ -327,6 +327,129 @@ impl ToolRegistry {
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
+
+    /// Scan `dir` recursively for `mcp.json` files emitted by `oxide-gen` and
+    /// register each declared tool as a [`CliTool`].
+    ///
+    /// The binary is resolved relative to the manifest's directory: every
+    /// generated crate keeps its `target/release/<bin>` next to its
+    /// `mcp.json` after a `cargo build --release`, so the same scanning
+    /// pass works whether the manifest sits beside a built binary or beside
+    /// a sibling `target/` directory.
+    ///
+    /// Returns the number of tools registered.
+    pub fn load_dir(&mut self, dir: impl AsRef<std::path::Path>) -> Result<usize> {
+        let mut count = 0usize;
+        for entry in walk_mcp_manifests(dir.as_ref())? {
+            count += self.load_manifest(&entry)?;
+        }
+        Ok(count)
+    }
+
+    /// Load a single `mcp.json` manifest. Useful when callers want to scope
+    /// discovery to one generated crate.
+    pub fn load_manifest(&mut self, manifest_path: &std::path::Path) -> Result<usize> {
+        let raw = std::fs::read_to_string(manifest_path).map_err(crate::error::McpError::Io)?;
+        let manifest: McpManifest = serde_json::from_str(&raw)?;
+        let crate_dir = manifest_path.parent().unwrap_or(std::path::Path::new("."));
+        let mut count = 0usize;
+        for tool_spec in manifest.tools {
+            let bin_name = tool_spec
+                .command
+                .clone()
+                .unwrap_or_else(|| manifest.command.clone());
+            let bin_path = resolve_binary(crate_dir, &bin_name);
+            let subcommand = tool_spec
+                .subcommand
+                .clone()
+                .unwrap_or_else(|| tool_spec.name.clone());
+            let descriptor = ToolDescriptor {
+                name: tool_spec.name.clone(),
+                description: tool_spec.description.clone(),
+                input_schema: tool_spec
+                    .input_schema
+                    .unwrap_or_else(ToolInputSchema::empty),
+            };
+            let cli = CliTool::new(descriptor, bin_path, vec![subcommand]);
+            self.register(std::sync::Arc::new(cli));
+            count += 1;
+        }
+        Ok(count)
+    }
+}
+
+/// Walk a directory tree (max depth 6) and collect every `mcp.json` path.
+fn walk_mcp_manifests(root: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
+    let mut out = Vec::new();
+    let mut stack: Vec<(std::path::PathBuf, usize)> = vec![(root.to_path_buf(), 0)];
+    const MAX_DEPTH: usize = 6;
+    while let Some((dir, depth)) = stack.pop() {
+        let read = match std::fs::read_dir(&dir) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for entry in read.flatten() {
+            let path = entry.path();
+            let file_type = match entry.file_type() {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() && depth < MAX_DEPTH {
+                // Skip noisy / hostile dirs.
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if matches!(
+                    name.as_ref(),
+                    "target" | "node_modules" | ".git" | ".cargo" | "dist" | "build"
+                ) {
+                    continue;
+                }
+                stack.push((path, depth + 1));
+            } else if file_type.is_file()
+                && path.file_name().and_then(|s| s.to_str()) == Some("mcp.json")
+            {
+                out.push(path);
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn resolve_binary(crate_dir: &std::path::Path, name: &str) -> String {
+    // Look for the binary in standard cargo output locations next to the
+    // manifest, then fall back to relying on `$PATH`.
+    let candidates = [
+        crate_dir.join("target").join("release").join(name),
+        crate_dir.join("target").join("debug").join(name),
+        crate_dir.join(name),
+    ];
+    for c in candidates {
+        if c.is_file() {
+            return c.to_string_lossy().to_string();
+        }
+    }
+    name.to_string()
+}
+
+#[derive(serde::Deserialize)]
+struct McpManifest {
+    #[allow(dead_code)]
+    name: String,
+    command: String,
+    tools: Vec<McpToolSpec>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpToolSpec {
+    name: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    command: Option<String>,
+    #[serde(default)]
+    subcommand: Option<String>,
+    #[serde(default, rename = "inputSchema")]
+    input_schema: Option<ToolInputSchema>,
 }
 
 #[cfg(test)]
@@ -339,6 +462,46 @@ mod tests {
             description: format!("Tool {name}"),
             input_schema: ToolInputSchema::empty(),
         }
+    }
+
+    #[test]
+    fn registry_load_dir_picks_up_emitted_mcp_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let crate_dir = tmp.path().join("petstore");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        let manifest = serde_json::json!({
+            "name": "petstore",
+            "displayName": "Pet Store",
+            "version": "1.0.0",
+            "type": "stdio",
+            "command": "petstore-cli",
+            "tools": [
+                {
+                    "name": "list-pets",
+                    "description": "List pets",
+                    "subcommand": "list-pets",
+                    "inputSchema": { "type": "object", "properties": {}, "required": [] }
+                },
+                {
+                    "name": "get-pet",
+                    "description": "Get a single pet",
+                    "subcommand": "get-pet",
+                    "inputSchema": { "type": "object", "properties": {}, "required": [] }
+                }
+            ]
+        });
+        std::fs::write(
+            crate_dir.join("mcp.json"),
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        let mut reg = ToolRegistry::new();
+        let n = reg.load_dir(tmp.path()).unwrap();
+        assert_eq!(n, 2);
+        let names: Vec<String> = reg.descriptors().into_iter().map(|d| d.name).collect();
+        assert!(names.contains(&"list-pets".to_string()));
+        assert!(names.contains(&"get-pet".to_string()));
     }
 
     #[tokio::test]

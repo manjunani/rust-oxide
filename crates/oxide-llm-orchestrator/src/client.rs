@@ -66,6 +66,31 @@ pub enum ResponseFormat {
     JsonObject,
 }
 
+/// One function definition the model may choose to invoke. Mirrors the
+/// OpenAI `tools[].function` shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolSpec {
+    /// Function name (must match `^[a-zA-Z0-9_-]+$`).
+    pub name: String,
+    /// Short, single-sentence description shown to the model.
+    pub description: String,
+    /// JSON Schema for the function's `arguments` object.
+    pub parameters: serde_json::Value,
+}
+
+/// One tool invocation returned by the model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// Provider-assigned call id (used when sending the tool result back).
+    pub id: String,
+    /// Function name the model wants to call.
+    pub name: String,
+    /// JSON-encoded arguments (the model serialises the args object as a
+    /// string, even when it conceptually matches the schema in
+    /// [`ToolSpec::parameters`]).
+    pub arguments: String,
+}
+
 /// Request shape sent to the provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -79,6 +104,9 @@ pub struct ChatRequest {
     pub max_tokens: Option<u32>,
     /// Optional response format constraint.
     pub response_format: Option<ResponseFormat>,
+    /// Tool definitions the model may invoke. Empty = no tools.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ToolSpec>,
 }
 
 impl ChatRequest {
@@ -90,7 +118,15 @@ impl ChatRequest {
             temperature: 0.2,
             max_tokens: None,
             response_format: None,
+            tools: Vec::new(),
         }
+    }
+
+    /// Builder helper: attach a tool definition.
+    #[must_use]
+    pub fn with_tool(mut self, tool: ToolSpec) -> Self {
+        self.tools.push(tool);
+        self
     }
 
     /// Builder helper: prepend a system message.
@@ -118,8 +154,13 @@ impl ChatRequest {
 /// Provider response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatResponse {
-    /// Completion content from the first choice.
+    /// Completion content from the first choice. Empty when the model
+    /// returned only tool calls.
     pub content: String,
+    /// Tool calls the model wants to issue. Empty when the model returned
+    /// only text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
     /// Model identifier the provider used (sometimes differs from the
     /// requested one, e.g. when a router substitutes).
     pub model: String,
@@ -138,11 +179,27 @@ pub struct Usage {
     pub total_tokens: u32,
 }
 
+/// A pinned, boxed stream of completion chunks. Each item is one piece of
+/// the assistant message as it streams in (typically a few tokens).
+pub type CompletionStream = std::pin::Pin<Box<dyn futures::Stream<Item = Result<String>> + Send>>;
+
 /// LLM client abstraction.
 #[async_trait]
 pub trait LlmClient: Send + Sync {
-    /// Send a [`ChatRequest`] and await the [`ChatResponse`].
+    /// Send a [`ChatRequest`] and await the full [`ChatResponse`].
     async fn complete(&self, request: ChatRequest) -> Result<ChatResponse>;
+
+    /// Stream a [`ChatRequest`] response chunk-by-chunk.
+    ///
+    /// The default implementation calls [`Self::complete`] and yields the
+    /// whole content as a single item — backends that don't natively
+    /// stream still satisfy the trait. Real streaming implementations
+    /// (see [`OpenAiClient`]) decode Server-Sent Events from the provider.
+    async fn complete_stream(&self, request: ChatRequest) -> Result<CompletionStream> {
+        let response = self.complete(request).await?;
+        let stream = futures::stream::once(async move { Ok(response.content) });
+        Ok(Box::pin(stream))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +247,26 @@ impl OpenAiClient {
 impl LlmClient for OpenAiClient {
     async fn complete(&self, request: ChatRequest) -> Result<ChatResponse> {
         let url = format!("{}/v1/chat/completions", self.base_url);
+        let tools_payload: Option<serde_json::Value> = if request.tools.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Array(
+                request
+                    .tools
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "type": "function",
+                            "function": {
+                                "name": t.name,
+                                "description": t.description,
+                                "parameters": t.parameters,
+                            }
+                        })
+                    })
+                    .collect(),
+            ))
+        };
         let mut builder = self.http.post(&url).json(&serde_json::json!({
             "model": request.model,
             "messages": request.messages,
@@ -199,6 +276,7 @@ impl LlmClient for OpenAiClient {
                 ResponseFormat::Text => serde_json::json!({"type": "text"}),
                 ResponseFormat::JsonObject => serde_json::json!({"type": "json_object"}),
             }),
+            "tools": tools_payload,
         }));
         if let Some(key) = &self.api_key {
             builder = builder.bearer_auth(key);
@@ -227,6 +305,18 @@ impl LlmClient for OpenAiClient {
         #[derive(Deserialize)]
         struct WireMessage {
             content: Option<String>,
+            #[serde(default)]
+            tool_calls: Vec<WireToolCall>,
+        }
+        #[derive(Deserialize)]
+        struct WireToolCall {
+            id: String,
+            function: WireToolFunction,
+        }
+        #[derive(Deserialize)]
+        struct WireToolFunction {
+            name: String,
+            arguments: String,
         }
         #[derive(Deserialize)]
         struct WireUsage {
@@ -239,15 +329,31 @@ impl LlmClient for OpenAiClient {
             LlmError::InvalidResponse(format!("failed to decode chat response: {e}"))
         })?;
 
-        let content = wire
+        let choice = wire
             .choices
             .into_iter()
             .next()
-            .and_then(|c| c.message.content)
             .ok_or(LlmError::EmptyCompletion)?;
+
+        let content = choice.message.content.unwrap_or_default();
+        let tool_calls: Vec<ToolCall> = choice
+            .message
+            .tool_calls
+            .into_iter()
+            .map(|tc| ToolCall {
+                id: tc.id,
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+            })
+            .collect();
+
+        if content.is_empty() && tool_calls.is_empty() {
+            return Err(LlmError::EmptyCompletion);
+        }
 
         Ok(ChatResponse {
             content,
+            tool_calls,
             model: wire.model.unwrap_or_else(|| request.model.clone()),
             usage: wire.usage.map(|u| Usage {
                 prompt_tokens: u.prompt_tokens,
@@ -256,6 +362,81 @@ impl LlmClient for OpenAiClient {
             }),
         })
     }
+
+    async fn complete_stream(&self, request: ChatRequest) -> Result<CompletionStream> {
+        let url = format!("{}/v1/chat/completions", self.base_url);
+        let mut builder = self.http.post(&url).json(&serde_json::json!({
+            "model": request.model,
+            "messages": request.messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens,
+            "stream": true,
+        }));
+        if let Some(key) = &self.api_key {
+            builder = builder.bearer_auth(key);
+        }
+        let resp = builder.send().await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(LlmError::Provider {
+                status: status.as_u16(),
+                body: body.chars().take(4096).collect(),
+            });
+        }
+
+        // OpenAI SSE format: `data: {…}\n\n`, terminated by `data: [DONE]`.
+        // We accumulate bytes across chunks, drain complete events at each
+        // step, and yield one `delta.content` string per emit. Malformed
+        // events are silently skipped — provider quirks shouldn't tear
+        // down the stream.
+        let state = (resp.bytes_stream(), String::new());
+        let stream = futures::stream::unfold(state, |(mut bytes, mut buffer)| async move {
+            loop {
+                if let Some(event) = take_event(&mut buffer) {
+                    for line in event.lines() {
+                        let Some(payload) = line.strip_prefix("data: ") else {
+                            continue;
+                        };
+                        let payload = payload.trim();
+                        if payload == "[DONE]" || payload.is_empty() {
+                            continue;
+                        }
+                        let value: serde_json::Value = match serde_json::from_str(payload) {
+                            Ok(v) => v,
+                            Err(_) => continue,
+                        };
+                        if let Some(content) = value
+                            .get("choices")
+                            .and_then(|c| c.get(0))
+                            .and_then(|c| c.get("delta"))
+                            .and_then(|d| d.get("content"))
+                            .and_then(|c| c.as_str())
+                        {
+                            if !content.is_empty() {
+                                return Some((Ok(content.to_string()), (bytes, buffer)));
+                            }
+                        }
+                    }
+                    continue;
+                }
+                use futures::StreamExt;
+                match bytes.next().await {
+                    Some(Ok(b)) => buffer.push_str(&String::from_utf8_lossy(b.as_ref())),
+                    Some(Err(e)) => {
+                        return Some((Err(LlmError::Http(e)), (bytes, buffer)));
+                    }
+                    None => return None,
+                }
+            }
+        });
+        Ok(Box::pin(stream))
+    }
+}
+
+fn take_event(buffer: &mut String) -> Option<String> {
+    let idx = buffer.find("\n\n")?;
+    Some(buffer.drain(..idx + 2).collect())
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +463,7 @@ impl MockLlmClient {
     pub fn single(content: impl Into<String>) -> Self {
         Self::new(vec![ChatResponse {
             content: content.into(),
+            tool_calls: Vec::new(),
             model: "mock".into(),
             usage: None,
         }])
@@ -319,11 +501,13 @@ mod tests {
         let mock = MockLlmClient::new(vec![
             ChatResponse {
                 content: "first".into(),
+                tool_calls: Vec::new(),
                 model: "m".into(),
                 usage: None,
             },
             ChatResponse {
                 content: "second".into(),
+                tool_calls: Vec::new(),
                 model: "m".into(),
                 usage: None,
             },
@@ -339,6 +523,29 @@ mod tests {
         let calls = mock.calls();
         assert_eq!(calls.len(), 3);
         assert_eq!(calls[0].messages[0].content, "a");
+    }
+
+    #[tokio::test]
+    async fn mock_default_complete_stream_yields_full_content_once() {
+        use futures::StreamExt;
+        let mock = MockLlmClient::single("hello world");
+        let stream = mock
+            .complete_stream(ChatRequest::simple("m", "hi"))
+            .await
+            .unwrap();
+        let chunks: Vec<_> = stream.collect().await;
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].as_ref().unwrap(), "hello world");
+    }
+
+    #[test]
+    fn sse_take_event_splits_on_blank_line() {
+        let mut buf = String::from("data: a\n\ndata: b\n\n");
+        let first = super::take_event(&mut buf).unwrap();
+        assert!(first.contains("data: a"));
+        let second = super::take_event(&mut buf).unwrap();
+        assert!(second.contains("data: b"));
+        assert!(super::take_event(&mut buf).is_none());
     }
 
     #[tokio::test]

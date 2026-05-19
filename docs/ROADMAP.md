@@ -161,8 +161,8 @@ Phases 1 / 3 can overlap. Phase 6 can overlap with the tail of Phase 5.
 
 **Progress checklist** — copy this section into a tracking issue and check off as items land.
 
-- Phase 0: [ ] R-01 [ ] R-02 [ ] R-03 [ ] R-04
-- Phase 1: [ ] R-05 [ ] R-06 [ ] R-07 [ ] R-08 [ ] R-09 [ ] R-10 [ ] R-11
+- Phase 0: [ ] R-01 [x] R-02 [ ] R-03 [x] R-04
+- Phase 1: [x] R-05 [x] R-06 [x] R-07 [x] R-08 [x] R-09 [x] R-10 [ ] R-11
 - Phase 2: [ ] R-12 [ ] R-13 [ ] R-14
 - Phase 3: [ ] R-15 [ ] R-16 [ ] R-17
 - Phase 4: [ ] R-18 [ ] R-19 [ ] R-20 [ ] R-21

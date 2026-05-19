@@ -182,6 +182,7 @@ async fn dispatch(
                 temperature: p.temperature,
                 max_tokens: p.max_tokens,
                 response_format: p.json.then_some(ResponseFormat::JsonObject),
+                tools: Vec::new(),
             };
             let response = client.complete(request).await.map_err(to_kernel)?;
             Ok(serde_json::to_value(response)?)
@@ -285,6 +286,7 @@ mod tests {
     async fn bus_complete_returns_chat_response() {
         let client: Arc<dyn LlmClient> = Arc::new(MockLlmClient::new(vec![ChatResponse {
             content: "hi back".into(),
+            tool_calls: Vec::new(),
             model: "mock-model".into(),
             usage: None,
         }]));
