@@ -12,18 +12,28 @@ description = "Inter-agent communication for Rust Oxide. Tokio-channel mesh for 
 name = "oxide_mesh"
 path = "src/lib.rs"
 
+[features]
+tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile"]
+
 [dependencies]
-tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-anyhow = { workspace = true }
-tracing = { workspace = true }
-async-trait = { workspace = true }
-chrono = { workspace = true }
-uuid = { workspace = true }
+tokio          = { workspace = true }
+serde          = { workspace = true }
+serde_json     = { workspace = true }
+thiserror      = { workspace = true }
+anyhow         = { workspace = true }
+tracing        = { workspace = true }
+async-trait    = { workspace = true }
+chrono         = { workspace = true }
+uuid           = { workspace = true }
+tokio-rustls   = { version = "0.26", optional = true }
+rustls         = { version = "0.23", features = ["ring"], optional = true }
+rustls-pemfile = { version = "2",    optional = true }
 
 oxide-k = { path = "../oxide-k" }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util", "macros"] }
+tokio          = { workspace = true, features = ["test-util", "macros"] }
+rcgen          = { version = "0.13", features = ["pem"] }
+rustls         = { version = "0.23", features = ["ring"] }
+tokio-rustls   = { version = "0.26" }
+rustls-pemfile = { version = "2" }

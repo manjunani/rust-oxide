@@ -42,4 +42,14 @@ pub trait BrowserBackend: Send + Sync {
 
     /// Snapshot of the accessibility tree for the current document.
     async fn accessibility_tree(&self) -> Result<AxNode>;
+
+    /// Return a backend scoped to the named iframe.
+    ///
+    /// `name` is matched against the frame's `name` attribute or URL
+    /// substring. Backends that cannot drill into sub-frames (e.g. the
+    /// [`crate::mock::MockBackend`]) must return
+    /// [`crate::error::BrowserError::Unsupported`].
+    async fn frame(&self, _name: &str) -> Result<Box<dyn BrowserBackend + Send + Sync>> {
+        Err(crate::error::BrowserError::Unsupported("frame drilling"))
+    }
 }

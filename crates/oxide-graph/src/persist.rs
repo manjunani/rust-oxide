@@ -170,8 +170,8 @@ impl GraphStore for PersistentGraph {
                 .try_get("properties")
                 .map_err(|e| GraphError::Other(e.into()))?;
 
-            let labels: Vec<String> = serde_json::from_str(&labels_str)
-                .map_err(|e| GraphError::Other(e.into()))?;
+            let labels: Vec<String> =
+                serde_json::from_str(&labels_str).map_err(|e| GraphError::Other(e.into()))?;
             let properties: serde_json::Map<String, Value> =
                 serde_json::from_str(&props_str).map_err(|e| GraphError::Other(e.into()))?;
 
@@ -239,8 +239,8 @@ impl GraphStore for PersistentGraph {
                 .try_get("properties")
                 .map_err(|e| GraphError::Other(e.into()))?;
 
-            let labels: Vec<String> = serde_json::from_str(&labels_str)
-                .map_err(|e| GraphError::Other(e.into()))?;
+            let labels: Vec<String> =
+                serde_json::from_str(&labels_str).map_err(|e| GraphError::Other(e.into()))?;
             if labels.contains(&label.to_string()) {
                 let properties: serde_json::Map<String, Value> =
                     serde_json::from_str(&props_str).map_err(|e| GraphError::Other(e.into()))?;

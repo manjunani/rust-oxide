@@ -254,10 +254,7 @@ mod tests {
         let store = MirrorStore::in_memory().await.unwrap();
         let source = Arc::new(StaticSource::from_deltas(
             "src",
-            vec![
-                upsert("a", json!({"x": 1})),
-                upsert("b", json!({"x": 2})),
-            ],
+            vec![upsert("a", json!({"x": 1})), upsert("b", json!({"x": 2}))],
         ));
         let syncer = Syncer::new(store.clone());
         let applied = syncer.sync_stream(source.as_ref(), None).await.unwrap();

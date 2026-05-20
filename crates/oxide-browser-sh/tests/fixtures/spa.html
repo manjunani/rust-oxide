@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>SPA Fixture</title></head>
+<body>
+  <div id="app">Loading...</div>
+  <script>
+    // Simulate a React/Vue-style SPA: render button after 100ms.
+    setTimeout(function () {
+      var app = document.getElementById('app');
+      app.innerHTML = '<button id="dynamic-btn" aria-label="Dynamic Button">Click me</button>';
+    }, 100);
+  </script>
+</body>
+</html>
