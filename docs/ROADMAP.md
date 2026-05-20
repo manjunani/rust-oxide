@@ -163,8 +163,8 @@ Phases 1 / 3 can overlap. Phase 6 can overlap with the tail of Phase 5.
 
 - Phase 0: [ ] R-01 [x] R-02 [x] R-03 [x] R-04
 - Phase 1: [x] R-05 [x] R-06 [x] R-07 [x] R-08 [x] R-09 [x] R-10 [x] R-11
-- Phase 2: [ ] R-12 [ ] R-13 [ ] R-14
-- Phase 3: [ ] R-15 [ ] R-16 [ ] R-17
+- Phase 2: [x] R-12 [x] R-13 [x] R-14
+- Phase 3: [x] R-15 [x] R-16 [x] R-17
 - Phase 4: [ ] R-18 [ ] R-19 [ ] R-20 [ ] R-21
 - Phase 5: [ ] R-22 [ ] R-23
 - Phase 6: [ ] R-24 [ ] R-25
