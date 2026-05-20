@@ -237,7 +237,8 @@ async fn test_grpc_smoke() {{
 
 fn render_graphql_smoke_test(spec: &ApiSpec) -> String {
     format!(
-        r##"use tokio::sync::oneshot;
+        r##"#![allow(unused_imports)]
+use tokio::sync::oneshot;
 use tokio::net::TcpListener;
 use futures_util::{{SinkExt, StreamExt}};
 use tokio_tungstenite::accept_async;
