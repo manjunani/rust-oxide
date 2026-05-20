@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — R-11: MCP SSE + WebSocket transports
+
+- **R-11**: `oxide-mcp-server` gains two optional network transports behind
+  Cargo features:
+  - `sse` — HTTP / Server-Sent Events transport (`GET /sse` + `POST /message`).
+    Sessions are keyed by UUID; the server pushes `event: endpoint` on connect
+    and `event: message` per JSON-RPC response. Backed by `axum 0.7` +
+    `tokio::sync::mpsc`.
+  - `websocket` — WebSocket transport using `tokio-tungstenite 0.23`.
+    Each text frame is one JSON-RPC request/response pair; notifications
+    produce no frame.
+  - Both transports share the existing `McpServer::handle_line` core unchanged.
+  - Three new tests: WS initialize roundtrip, WS tools/call roundtrip,
+    SSE content-type + 200 OK.
+  - `McpServer` derives `Clone` enabling cheap Arc-based sharing across
+    async tasks.
+- `BACKLOG.md` added: tracks all open roadmap items (R-12..R-26 + manual tasks).
+
 ### Added — backlog burn-down (roadmap items R-02, R-04..R-10)
 
 - **R-02**: crate-name availability verified — every `oxide-*` workspace
@@ -56,7 +74,7 @@ Plus the pre-existing items from the previous bootstrap:
 
 ### Verification
 
-- `cargo test --workspace`: **155/155 pass** across 22 suites (was 150 prior
+- `cargo test --workspace`: **155/155 pass** across 22 suites; transport tests run via `--features sse,websocket` (was 150 prior
   to R-06/07/08/09/10).
 - `cargo clippy --workspace --all-targets -- -D warnings`: clean.
 - `cargo fmt --all -- --check`: clean.
@@ -66,8 +84,7 @@ Plus the pre-existing items from the previous bootstrap:
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md). Phase 0 (R-01..R-04) is fully
 closed once `v0.1.0` is tagged (R-01) and GitHub Code/Secret Scanning is
 enabled in the repo settings (R-03, manual step). Phase 1 (R-05..R-11) is
-closed except for R-11 (SSE/WebSocket MCP transports), which remains
-pending — see ROADMAP for sequencing.
+fully closed. Phase 2 (R-12..R-14) is next — see `BACKLOG.md`.
 
 ## [0.1.0] — bootstrap series
 

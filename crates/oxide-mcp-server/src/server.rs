@@ -30,6 +30,7 @@ impl Default for ServerInfo {
 
 /// MCP server core. Holds the [`ToolRegistry`] and translates JSON-RPC
 /// requests into tool invocations.
+#[derive(Clone)]
 pub struct McpServer {
     info: ServerInfo,
     registry: ToolRegistry,
@@ -160,6 +161,23 @@ impl McpServer {
 
             other => Err((codes::METHOD_NOT_FOUND, format!("unknown method `{other}`"))),
         }
+    }
+
+    /// Serve over HTTP / Server-Sent Events. Requires the `sse` feature.
+    ///
+    /// `addr` is any string accepted by [`tokio::net::TcpListener::bind`],
+    /// e.g. `"127.0.0.1:3001"`.
+    #[cfg(feature = "sse")]
+    pub async fn run_sse(self: std::sync::Arc<Self>, addr: &str) -> Result<()> {
+        crate::transports::run_sse(self, addr).await
+    }
+
+    /// Serve over WebSocket. Requires the `websocket` feature.
+    ///
+    /// `addr` is any string accepted by [`tokio::net::TcpListener::bind`].
+    #[cfg(feature = "websocket")]
+    pub async fn run_websocket(self: std::sync::Arc<Self>, addr: &str) -> Result<()> {
+        crate::transports::run_websocket(self, addr).await
     }
 
     /// Synchronous entry point used by the stdio loop in `main.rs`.

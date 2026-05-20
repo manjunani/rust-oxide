@@ -23,6 +23,7 @@ pub mod error;
 pub mod rpc;
 pub mod server;
 pub mod tool;
+pub mod transports;
 
 pub use error::{McpError, Result};
 pub use rpc::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, RpcId};

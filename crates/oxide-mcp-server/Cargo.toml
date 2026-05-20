@@ -28,7 +28,16 @@ async-trait = { workspace = true }
 uuid = { workspace = true }
 
 oxide-k = { path = "../oxide-k" }
+axum = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+
+[features]
+sse = ["dep:axum", "dep:futures"]
+websocket = ["dep:tokio-tungstenite", "dep:futures"]
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["test-util", "macros"] }
+tokio = { workspace = true, features = ["test-util", "macros", "io-util", "net"] }
 tempfile = "3.12"
+tokio-tungstenite = { workspace = true }
+futures = { workspace = true }
