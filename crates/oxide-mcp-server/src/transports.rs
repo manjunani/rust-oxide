@@ -164,12 +164,20 @@ pub async fn run_websocket(server: Arc<McpServer>, addr: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    #[cfg(any(feature = "sse", feature = "websocket"))]
+    use std::sync::Arc;
+
+    #[cfg(any(feature = "sse", feature = "websocket"))]
+    use crate::server::McpServer;
+    #[cfg(any(feature = "sse", feature = "websocket"))]
     use crate::tool::{Tool, ToolDescriptor, ToolInputSchema, ToolRegistry};
+    #[cfg(any(feature = "sse", feature = "websocket"))]
     use async_trait::async_trait;
 
+    #[cfg(any(feature = "sse", feature = "websocket"))]
     struct EchoTool;
 
+    #[cfg(any(feature = "sse", feature = "websocket"))]
     #[async_trait]
     impl Tool for EchoTool {
         fn descriptor(&self) -> ToolDescriptor {
@@ -184,6 +192,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "sse", feature = "websocket"))]
     fn test_server() -> Arc<McpServer> {
         let mut reg = ToolRegistry::new();
         reg.register(Arc::new(EchoTool));
