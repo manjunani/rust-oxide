@@ -170,9 +170,10 @@ impl GraphStore for PersistentGraph {
                 .try_get("properties")
                 .map_err(|e| GraphError::Other(e.into()))?;
 
-            let labels: Vec<String> = serde_json::from_str(&labels_str).unwrap_or_default();
+            let labels: Vec<String> = serde_json::from_str(&labels_str)
+                .map_err(|e| GraphError::Other(e.into()))?;
             let properties: serde_json::Map<String, Value> =
-                serde_json::from_str(&props_str).unwrap_or_default();
+                serde_json::from_str(&props_str).map_err(|e| GraphError::Other(e.into()))?;
 
             Ok(Some(Node {
                 id: id.clone(),
@@ -206,7 +207,7 @@ impl GraphStore for PersistentGraph {
                 .map_err(|e| GraphError::Other(e.into()))?;
 
             let properties: serde_json::Map<String, Value> =
-                serde_json::from_str(&props_str).unwrap_or_default();
+                serde_json::from_str(&props_str).map_err(|e| GraphError::Other(e.into()))?;
 
             Ok(Some(Edge {
                 id: id.clone(),
@@ -238,10 +239,11 @@ impl GraphStore for PersistentGraph {
                 .try_get("properties")
                 .map_err(|e| GraphError::Other(e.into()))?;
 
-            let labels: Vec<String> = serde_json::from_str(&labels_str).unwrap_or_default();
+            let labels: Vec<String> = serde_json::from_str(&labels_str)
+                .map_err(|e| GraphError::Other(e.into()))?;
             if labels.contains(&label.to_string()) {
                 let properties: serde_json::Map<String, Value> =
-                    serde_json::from_str(&props_str).unwrap_or_default();
+                    serde_json::from_str(&props_str).map_err(|e| GraphError::Other(e.into()))?;
                 nodes.push(Node {
                     id,
                     labels,
@@ -283,7 +285,7 @@ impl GraphStore for PersistentGraph {
                 .map_err(|e| GraphError::Other(e.into()))?;
 
             let properties: serde_json::Map<String, Value> =
-                serde_json::from_str(&props_str).unwrap_or_default();
+                serde_json::from_str(&props_str).map_err(|e| GraphError::Other(e.into()))?;
             edges.push(Edge {
                 id,
                 from: from.clone(),
@@ -326,7 +328,7 @@ impl GraphStore for PersistentGraph {
                 .map_err(|e| GraphError::Other(e.into()))?;
 
             let properties: serde_json::Map<String, Value> =
-                serde_json::from_str(&props_str).unwrap_or_default();
+                serde_json::from_str(&props_str).map_err(|e| GraphError::Other(e.into()))?;
             edges.push(Edge {
                 id,
                 from,
@@ -342,11 +344,11 @@ impl GraphStore for PersistentGraph {
         let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM nodes")
             .fetch_one(&self.pool)
             .await
-            .unwrap_or(0);
+            .map_err(|e| GraphError::Other(e.into()))?;
         let e: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM edges")
             .fetch_one(&self.pool)
             .await
-            .unwrap_or(0);
+            .map_err(|e| GraphError::Other(e.into()))?;
         Ok((n as usize, e as usize))
     }
 }

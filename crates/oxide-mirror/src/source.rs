@@ -1,7 +1,11 @@
 //! The [`SyncSource`] trait + reusable test helpers.
 
-use async_trait::async_trait;
+use std::pin::Pin;
 use std::sync::Mutex;
+
+use async_trait::async_trait;
+use futures_util::stream;
+use futures_util::Stream;
 
 use crate::error::Result;
 use crate::event::Delta;
@@ -20,6 +24,9 @@ pub struct PullResult {
     pub has_more: bool,
 }
 
+/// Pinned, heap-allocated delta stream.
+pub type DeltaStream = Pin<Box<dyn Stream<Item = Result<Delta>> + Send>>;
+
 /// Anything that can emit deltas into the local mirror.
 ///
 /// Generated `oxide-gen` clients implement this by translating their API's
@@ -32,6 +39,17 @@ pub trait SyncSource: Send + Sync {
     /// Pull the next batch of deltas. `cursor` is the value the source
     /// returned from the previous call, or `None` for the first pull.
     async fn pull(&self, cursor: Option<String>) -> Result<PullResult>;
+
+    /// Subscribe to a live stream of deltas starting from `cursor`.
+    ///
+    /// The default implementation does a **single** `pull` call and wraps
+    /// the resulting batch as a finite stream. Override this method for
+    /// sources that support real push (WebSocket, SSE, change-feeds, etc.).
+    async fn subscribe(&self, cursor: Option<String>) -> Result<DeltaStream> {
+        let batch = self.pull(cursor).await?;
+        let deltas: Vec<Result<Delta>> = batch.deltas.into_iter().map(Ok).collect();
+        Ok(Box::pin(stream::iter(deltas)))
+    }
 }
 
 /// In-memory [`SyncSource`] used by tests.

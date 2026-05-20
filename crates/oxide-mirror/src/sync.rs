@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::conflict::{ConflictStrategy, LastWriteWins};
@@ -84,6 +85,30 @@ impl Syncer {
             .get(source_id)
             .ok_or_else(|| MirrorError::UnknownSource(source_id.to_string()))?;
         self.sync_with(source.as_ref()).await
+    }
+
+    /// Drain a source's [`SyncSource::subscribe`] stream into the store.
+    ///
+    /// Each delta is applied immediately as it arrives. Returns the count of
+    /// deltas successfully applied. Stops when the stream ends or errors.
+    pub async fn sync_stream(
+        &self,
+        source: &dyn SyncSource,
+        cursor: Option<String>,
+    ) -> Result<u64> {
+        let mut stream = source.subscribe(cursor).await?;
+        let mut applied: u64 = 0;
+        while let Some(item) = stream.next().await {
+            let delta = item?;
+            let outcome = self
+                .store
+                .apply_delta(&delta, self.strategy.as_ref())
+                .await?;
+            if outcome.applied {
+                applied += 1;
+            }
+        }
+        Ok(applied)
     }
 
     /// Sync a single concrete [`SyncSource`] (handy when callers manage their
@@ -222,6 +247,22 @@ mod tests {
         assert_eq!(report.skipped, 1);
         let rec = store.get_record("pets", "1").await.unwrap().unwrap();
         assert_eq!(rec.payload["v"], json!("good"));
+    }
+
+    #[tokio::test]
+    async fn sync_stream_applies_deltas() {
+        let store = MirrorStore::in_memory().await.unwrap();
+        let source = Arc::new(StaticSource::from_deltas(
+            "src",
+            vec![
+                upsert("a", json!({"x": 1})),
+                upsert("b", json!({"x": 2})),
+            ],
+        ));
+        let syncer = Syncer::new(store.clone());
+        let applied = syncer.sync_stream(source.as_ref(), None).await.unwrap();
+        assert_eq!(applied, 2);
+        assert_eq!(store.list_records("pets").await.unwrap().len(), 2);
     }
 
     #[tokio::test]
