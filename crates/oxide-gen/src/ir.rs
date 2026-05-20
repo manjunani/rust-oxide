@@ -29,6 +29,9 @@ pub struct ApiSpec {
     pub types: Vec<TypeDef>,
     /// Callable operations.
     pub operations: Vec<Operation>,
+    /// The raw spec contents (useful for build.rs or schema files).
+    #[serde(default)]
+    pub raw_spec: Option<String>,
 }
 
 /// The format of the original API specification.

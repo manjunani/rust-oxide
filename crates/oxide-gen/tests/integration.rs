@@ -142,17 +142,40 @@ fn generates_grpc_crate() {
     )
     .expect("generation");
 
+    for name in [
+        "Cargo.toml",
+        "src/lib.rs",
+        "src/main.rs",
+        "SKILL.md",
+        "mcp.json",
+        "module.json",
+        "build.rs",
+        "proto/schema.proto",
+        "tests/smoke.rs",
+    ] {
+        let p = tmp.path().join(name);
+        assert!(p.exists(), "expected {name} to exist");
+    }
+
     let lib = tmp.path().join("src/lib.rs");
     let main = tmp.path().join("src/main.rs");
     assert_syntactically_valid_rust(&lib);
     assert_syntactically_valid_rust(&main);
 
     let lib_src = std::fs::read_to_string(&lib).unwrap();
-    assert!(lib_src.contains("pub struct SayRequest"));
-    assert!(lib_src.contains("pub struct SayResponse"));
+    assert!(lib_src.contains("pub mod proto"));
+    assert!(lib_src.contains("pub use proto::SayRequest;"));
+    assert!(lib_src.contains("pub use proto::SayResponse;"));
     assert!(lib_src.contains("pub async fn say"));
-    // gRPC scaffold bails until tonic is wired up.
-    assert!(lib_src.contains("anyhow::bail!"));
+    assert!(lib_src.contains("EchoClient::connect"));
+
+    // Compile and run the generated smoke test.
+    let status = std::process::Command::new("cargo")
+        .arg("test")
+        .current_dir(tmp.path())
+        .status()
+        .expect("failed to execute cargo test");
+    assert!(status.success(), "cargo test in generated crate failed");
 }
 
 #[test]

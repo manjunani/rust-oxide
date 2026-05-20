@@ -1,6 +1,7 @@
 //! Emit `src/lib.rs` for the generated crate.
 
 use std::fmt::Write;
+use heck::ToSnakeCase;
 
 use crate::ir::{
     ApiKind, ApiSpec, EnumVariant, Field, HttpMethod, Operation, Param, ParamLocation, Protocol,
@@ -43,9 +44,20 @@ pub fn render(spec: &ApiSpec) -> String {
     writeln!(out).unwrap();
 
     // -- Types -------------------------------------------------------------
-    for td in &spec.types {
-        render_type(&mut out, td);
+    if spec.kind == ApiKind::Grpc {
+        writeln!(out, "pub mod proto {{").unwrap();
+        writeln!(out, "    tonic::include_proto!(\"{}\");", spec.display_name).unwrap();
+        writeln!(out, "}}").unwrap();
         writeln!(out).unwrap();
+        for td in &spec.types {
+            writeln!(out, "pub use proto::{};", td.name()).unwrap();
+        }
+        writeln!(out).unwrap();
+    } else {
+        for td in &spec.types {
+            render_type(&mut out, td);
+            writeln!(out).unwrap();
+        }
     }
 
     // -- Client ------------------------------------------------------------
@@ -446,22 +458,32 @@ fn render_graphql_body(out: &mut String, op: &Operation) {
 }
 
 fn render_grpc_body(out: &mut String, op: &Operation) {
-    writeln!(
-        out,
-        "        // gRPC method scaffold. Wire `tonic` + `prost` into this crate to dispatch."
-    )
-    .unwrap();
-    // Touch each parameter first so the trailing `bail!` isn't flagged as
-    // making other statements unreachable.
-    for p in &op.params {
-        writeln!(out, "        let _ = &{n};", n = p.name).unwrap();
+    let parts: Vec<&str> = op.endpoint.split('/').collect();
+    if parts.len() < 3 {
+        writeln!(
+            out,
+            "        anyhow::bail!(\"gRPC endpoint '{}' format invalid. Expected /Service/Method\");",
+            op.endpoint
+        )
+        .unwrap();
+        return;
     }
+    let service_name = parts[1];
+    let method_name = parts[2];
+    let service_snake = service_name.to_snake_case();
+    let method_snake = method_name.to_snake_case();
+
     writeln!(
         out,
-        "        anyhow::bail!(\"gRPC method `{}` not yet wired; regenerate with a tonic-compatible backend.\");",
-        op.original_id
+        "        let mut client = proto::{service_snake}_client::{service_name}Client::connect(self.base_url.clone()).await?;"
     )
     .unwrap();
+    writeln!(
+        out,
+        "        let response = client.{method_snake}(tonic::Request::new(request)).await?;"
+    )
+    .unwrap();
+    writeln!(out, "        Ok(response.into_inner())").unwrap();
 }
 
 // ---------------------------------------------------------------------------

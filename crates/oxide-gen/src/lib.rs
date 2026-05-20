@@ -64,6 +64,7 @@ pub fn generate_from_path(
         ApiKind::GraphQl => parsers::graphql::parse(&raw)?,
         ApiKind::Grpc => parsers::proto::parse(&raw)?,
     };
+    spec.raw_spec = Some(raw);
 
     if let Some(name) = crate_name {
         spec.name = name.to_string();

@@ -63,6 +63,7 @@ pub fn parse(raw: &str) -> Result<ApiSpec> {
         base_url,
         types,
         operations,
+        raw_spec: None,
     })
 }
 
