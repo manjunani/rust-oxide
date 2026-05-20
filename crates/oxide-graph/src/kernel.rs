@@ -19,7 +19,7 @@ pub const DEFAULT_MODULE_ID: &str = "graph";
 /// Knowledge-graph module wrapped around an [`InMemoryGraph`].
 pub struct GraphModule {
     id: String,
-    store: Arc<InMemoryGraph>,
+    store: Arc<dyn GraphStore>,
     listener: Option<JoinHandle<()>>,
 }
 
@@ -30,7 +30,7 @@ impl GraphModule {
     }
 
     /// Build with an explicit store.
-    pub fn with_store(store: Arc<InMemoryGraph>) -> Self {
+    pub fn with_store(store: Arc<dyn GraphStore>) -> Self {
         Self {
             id: DEFAULT_MODULE_ID.into(),
             store,
@@ -39,7 +39,7 @@ impl GraphModule {
     }
 
     /// Access the underlying store.
-    pub fn store(&self) -> Arc<InMemoryGraph> {
+    pub fn store(&self) -> Arc<dyn GraphStore> {
         self.store.clone()
     }
 }
@@ -167,7 +167,7 @@ fn default_depth() -> usize {
 }
 
 async fn dispatch(
-    store: &Arc<InMemoryGraph>,
+    store: &Arc<dyn GraphStore>,
     method: &str,
     payload: serde_json::Value,
 ) -> KernelResult<serde_json::Value> {

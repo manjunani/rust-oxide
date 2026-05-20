@@ -24,6 +24,8 @@ pub mod error;
 pub mod graph;
 pub mod ingest;
 pub mod kernel;
+#[cfg(feature = "persist")]
+pub mod persist;
 pub mod query;
 
 pub use error::{GraphError, Result};

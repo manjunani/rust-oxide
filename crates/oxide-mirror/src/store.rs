@@ -24,6 +24,7 @@ pub struct AppliedDelta {
 #[derive(Clone)]
 pub struct MirrorStore {
     pool: SqlitePool,
+    tx: tokio::sync::broadcast::Sender<Delta>,
 }
 
 impl MirrorStore {
@@ -36,7 +37,8 @@ impl MirrorStore {
             .max_connections(1)
             .connect_with(options)
             .await?;
-        let store = Self { pool };
+        let (tx, _) = tokio::sync::broadcast::channel(1024);
+        let store = Self { pool, tx };
         store.migrate().await?;
         Ok(store)
     }
@@ -50,7 +52,8 @@ impl MirrorStore {
             .max_connections(5)
             .connect_with(options)
             .await?;
-        let store = Self { pool };
+        let (tx, _) = tokio::sync::broadcast::channel(1024);
+        let store = Self { pool, tx };
         store.migrate().await?;
         Ok(store)
     }
@@ -65,71 +68,95 @@ impl MirrorStore {
     // Schema
     // -----------------------------------------------------------------------
 
-    async fn migrate(&self) -> Result<()> {
-        sqlx::query(
-            r#"CREATE TABLE IF NOT EXISTS mirror_resources (
-                name          TEXT PRIMARY KEY,
-                registered_at TEXT NOT NULL
-            )"#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            r#"CREATE TABLE IF NOT EXISTS mirror_events (
-                seq         INTEGER PRIMARY KEY AUTOINCREMENT,
-                resource    TEXT NOT NULL,
-                record_id   TEXT NOT NULL,
-                op          TEXT NOT NULL,
-                payload     TEXT NOT NULL,
-                source      TEXT NOT NULL,
-                confidence  REAL NOT NULL,
-                occurred_at TEXT NOT NULL,
-                applied_at  TEXT NOT NULL,
-                applied     INTEGER NOT NULL,
-                decision    TEXT NOT NULL
-            )"#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            r#"CREATE TABLE IF NOT EXISTS mirror_records (
-                resource       TEXT NOT NULL,
-                record_id      TEXT NOT NULL,
-                payload        TEXT NOT NULL,
-                source         TEXT NOT NULL,
-                last_synced_at TEXT NOT NULL,
-                confidence     REAL NOT NULL,
-                version        INTEGER NOT NULL DEFAULT 1,
-                PRIMARY KEY (resource, record_id)
-            )"#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query(
-            r#"CREATE TABLE IF NOT EXISTS mirror_cursors (
-                source     TEXT NOT NULL,
-                resource   TEXT NOT NULL,
-                cursor     TEXT,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY (source, resource)
-            )"#,
-        )
-        .execute(&self.pool)
-        .await?;
-
-        sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_resource ON mirror_events(resource)")
+    /// Migrate the schema to the latest version (or a specific target).
+    pub async fn migrate_to(&self, target_version: Option<i64>) -> Result<()> {
+        sqlx::query("CREATE TABLE IF NOT EXISTS mirror_schema_migrations (version INTEGER PRIMARY KEY)")
             .execute(&self.pool)
             .await?;
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_events_source_time ON mirror_events(source, occurred_at)",
-        )
-        .execute(&self.pool)
-        .await?;
+
+        let current_version: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM mirror_schema_migrations")
+            .fetch_optional(&self.pool)
+            .await?;
+        let current = current_version.unwrap_or(0);
+        let target = target_version.unwrap_or(1);
+
+        if current < 1 && target >= 1 {
+            let mut tx = self.pool.begin().await?;
+            sqlx::query(
+                r#"CREATE TABLE IF NOT EXISTS mirror_resources (
+                    name          TEXT PRIMARY KEY,
+                    registered_at TEXT NOT NULL
+                )"#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"CREATE TABLE IF NOT EXISTS mirror_events (
+                    seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    resource    TEXT NOT NULL,
+                    record_id   TEXT NOT NULL,
+                    op          TEXT NOT NULL,
+                    payload     TEXT NOT NULL,
+                    source      TEXT NOT NULL,
+                    confidence  REAL NOT NULL,
+                    occurred_at TEXT NOT NULL,
+                    applied_at  TEXT NOT NULL,
+                    applied     INTEGER NOT NULL,
+                    decision    TEXT NOT NULL
+                )"#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"CREATE TABLE IF NOT EXISTS mirror_records (
+                    resource       TEXT NOT NULL,
+                    record_id      TEXT NOT NULL,
+                    payload        TEXT NOT NULL,
+                    source         TEXT NOT NULL,
+                    last_synced_at TEXT NOT NULL,
+                    confidence     REAL NOT NULL,
+                    version        INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (resource, record_id)
+                )"#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query(
+                r#"CREATE TABLE IF NOT EXISTS mirror_cursors (
+                    source     TEXT NOT NULL,
+                    resource   TEXT NOT NULL,
+                    cursor     TEXT,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (source, resource)
+                )"#,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_resource ON mirror_events(resource)")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_events_source_time ON mirror_events(source, occurred_at)",
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query("INSERT INTO mirror_schema_migrations (version) VALUES (1)")
+                .execute(&mut *tx)
+                .await?;
+
+            tx.commit().await?;
+        }
 
         Ok(())
+    }
+
+    async fn migrate(&self) -> Result<()> {
+        self.migrate_to(None).await
     }
 
     // -----------------------------------------------------------------------
@@ -286,6 +313,8 @@ impl MirrorStore {
 
         tx.commit().await?;
 
+        let _ = self.tx.send(delta.clone());
+
         Ok(AppliedDelta {
             applied,
             decision: decision_label,
@@ -433,6 +462,13 @@ impl MirrorStore {
 
         let rows = sqlx::query(trimmed).fetch_all(&self.pool).await?;
         rows.iter().map(row_to_json).collect()
+    }
+
+    /// Subscribe to a live stream of deltas as they are applied.
+    pub fn subscribe(&self) -> impl futures_util::Stream<Item = Delta> + Send {
+        use futures_util::StreamExt;
+        tokio_stream::wrappers::BroadcastStream::new(self.tx.subscribe())
+            .filter_map(|res| std::future::ready(res.ok()))
     }
 }
 
@@ -717,5 +753,41 @@ mod tests {
             store.get_cursor("src", "pets").await.unwrap().as_deref(),
             Some("page-42")
         );
+    }
+
+    #[tokio::test]
+    async fn test_schema_migrations() {
+        let store = MirrorStore::in_memory().await.unwrap();
+        // Since in_memory() already calls migrate(), version should be 1
+        let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM mirror_schema_migrations")
+            .fetch_one(&store.pool)
+            .await
+            .unwrap();
+        assert_eq!(version, 1);
+
+        // Calling migrate_to(Some(1)) again should be safe and idempotent
+        store.migrate_to(Some(1)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_live_subscription() {
+        use futures_util::StreamExt;
+
+        let store = MirrorStore::in_memory().await.unwrap();
+        let mut stream = store.subscribe();
+
+        // Apply a delta
+        store
+            .apply_delta(
+                &upsert("pets", "1", json!({"name": "Rex"}), "a"),
+                &LastWriteWins,
+            )
+            .await
+            .unwrap();
+
+        // Assert we receive it
+        let delta = stream.next().await.unwrap();
+        assert_eq!(delta.resource, "pets");
+        assert_eq!(delta.record_id, "1");
     }
 }
