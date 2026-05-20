@@ -119,6 +119,13 @@ pub fn emit_crate(spec: &ApiSpec, output_dir: &Path) -> Result<EmitReport> {
         write_file(&smoke_test_dir.join("smoke.rs"), &smoke_test_code, &mut report)?;
     }
 
+    if spec.kind == ApiKind::GraphQl && spec.name == "gql_demo" {
+        let smoke_test_dir = output_dir.join("tests");
+        ensure_dir(&smoke_test_dir)?;
+        let smoke_test_code = render_graphql_smoke_test(spec);
+        write_file(&smoke_test_dir.join("smoke.rs"), &smoke_test_code, &mut report)?;
+    }
+
     Ok(report)
 }
 
@@ -219,6 +226,99 @@ async fn test_grpc_smoke() {{
         name = spec.name
     )
 }
+
+fn render_graphql_smoke_test(spec: &ApiSpec) -> String {
+    format!(
+        r##"use tokio::sync::oneshot;
+use tokio::net::TcpListener;
+use futures_util::{{SinkExt, StreamExt}};
+use tokio_tungstenite::accept_async;
+use tokio_tungstenite::tungstenite::Message;
+
+use {name}::{{Client, Post, User, Role}};
+
+#[tokio::test]
+async fn test_graphql_subscription_smoke() {{
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let (tx, rx) = oneshot::channel::<()>();
+
+    let server_handle = tokio::spawn(async move {{
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws_stream = accept_async(stream).await.unwrap();
+
+        // 1. Read connection_init
+        if let Some(Ok(Message::Text(text))) = ws_stream.next().await {{
+            let init: serde_json::Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(init["type"], "connection_init");
+        }}
+
+        // Send connection_ack
+        ws_stream
+            .send(Message::Text(r#"{{"type":"connection_ack"}}"#.into()))
+            .await
+            .unwrap();
+
+        // 2. Read subscribe
+        if let Some(Ok(Message::Text(text))) = ws_stream.next().await {{
+            let sub: serde_json::Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(sub["type"], "subscribe");
+            assert_eq!(sub["id"], "sub_1");
+        }}
+
+        // Send next item
+        let item_payload = serde_json::json!({{
+            "type": "next",
+            "id": "sub_1",
+            "payload": {{
+                "data": {{
+                    "postCreated": {{
+                        "id": "1",
+                        "title": "Hello World",
+                        "body": "Smoke test body",
+                        "author": {{
+                            "id": "1",
+                            "name": "Alice",
+                            "email": "alice@example.com",
+                            "role": "ADMIN"
+                        }}
+                    }}
+                }}
+            }}
+        }});
+        ws_stream
+            .send(Message::Text(serde_json::to_string(&item_payload).unwrap().into()))
+            .await
+            .unwrap();
+
+        // Send complete
+        ws_stream
+            .send(Message::Text(r#"{{"id":"sub_1","type":"complete"}}"#.into()))
+            .await
+            .unwrap();
+
+        // Wait for shutdown signal
+        let _ = rx.await;
+    }});
+
+    let client = Client::new(format!("http://{{}}", addr));
+    let mut stream = client.post_created().await.unwrap();
+
+    let first = stream.next().await.unwrap().unwrap();
+    assert_eq!(first.title, "Hello World");
+    assert_eq!(first.author.name, "Alice");
+
+    assert!(stream.next().await.is_none());
+
+    let _ = tx.send(());
+    let _ = server_handle.await;
+}}
+"##,
+        name = spec.name
+    )
+}
+
 
 fn ensure_dir(path: &Path) -> Result<()> {
     fs::create_dir_all(path).map_err(|source| GenError::WriteOutput {

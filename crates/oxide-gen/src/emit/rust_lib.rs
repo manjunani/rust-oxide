@@ -5,7 +5,7 @@ use heck::ToSnakeCase;
 
 use crate::ir::{
     ApiKind, ApiSpec, EnumVariant, Field, HttpMethod, Operation, Param, ParamLocation, Protocol,
-    TypeDef,
+    StreamingMode, TypeDef,
 };
 
 /// Render the full `lib.rs` contents.
@@ -197,7 +197,10 @@ fn render_operation(out: &mut String, spec: &ApiSpec, op: &Operation) {
         .params
         .iter()
         .map(|p| {
-            let ty = if p.required {
+            let is_grpc_client_or_bidi_stream = (op.streaming == StreamingMode::ClientStream || op.streaming == StreamingMode::BidiStream) && op.protocol == Protocol::Grpc;
+            let ty = if is_grpc_client_or_bidi_stream {
+                format!("impl futures_util::Stream<Item = {}> + Send + 'static", p.rust_type)
+            } else if p.required {
                 p.rust_type.clone()
             } else {
                 format!("Option<{}>", p.rust_type)
@@ -208,16 +211,35 @@ fn render_operation(out: &mut String, spec: &ApiSpec, op: &Operation) {
         .join(", ");
 
     let prefix = if sig_params.is_empty() { "" } else { ", " };
+    let ret = if op.streaming.is_streaming() {
+        match op.protocol {
+            Protocol::GraphQl => {
+                format!("futures_util::stream::BoxStream<'static, anyhow::Result<{}>>", op.return_type)
+            }
+            Protocol::Grpc => {
+                format!("futures_util::stream::BoxStream<'static, std::result::Result<{}, tonic::Status>>", op.return_type)
+            }
+            _ => {
+                format!("futures_util::stream::BoxStream<'static, anyhow::Result<{}>>", op.return_type)
+            }
+        }
+    } else {
+        op.return_type.clone()
+    };
     writeln!(
         out,
         "    pub async fn {name}(&self{prefix}{sig_params}) -> anyhow::Result<{ret}> {{",
         name = op.id,
-        ret = op.return_type,
+        ret = ret,
     )
     .unwrap();
 
     if op.streaming.is_streaming() {
-        render_streaming_body(out, op);
+        match op.protocol {
+            Protocol::GraphQl => render_graphql_subscription_body(out, op),
+            Protocol::Grpc => render_grpc_body(out, op),
+            _ => render_streaming_body(out, op),
+        }
     } else {
         match op.protocol {
             Protocol::Rest => render_rest_body(out, spec, op),
@@ -457,6 +479,166 @@ fn render_graphql_body(out: &mut String, op: &Operation) {
     writeln!(out, "        Ok(parsed)").unwrap();
 }
 
+fn render_graphql_subscription_body(out: &mut String, op: &Operation) {
+    // Build the variables JSON map.
+    let var_decls = op
+        .params
+        .iter()
+        .filter(|p| p.location == ParamLocation::GraphQlVariable)
+        .map(|p| {
+            if p.required {
+                format!("vars.insert(\"{n}\".to_string(), serde_json::to_value(&{n})?);", n = p.name)
+            } else {
+                format!("if let Some(v) = {n}.as_ref() {{ vars.insert(\"{n}\".to_string(), serde_json::to_value(v)?); }}", n = p.name)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n        ");
+
+    // Build the GraphQL operation string.
+    let arg_list = op
+        .params
+        .iter()
+        .filter(|p| p.location == ParamLocation::GraphQlVariable)
+        .map(|p| {
+            let ty = if p.required {
+                format!("{}!", p.rust_type)
+            } else {
+                p.rust_type.clone()
+            };
+            format!("${n}: {ty}", n = p.name)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let arg_decl = if arg_list.is_empty() {
+        String::new()
+    } else {
+        format!("({})", arg_list)
+    };
+    let inner_args = op
+        .params
+        .iter()
+        .filter(|p| p.location == ParamLocation::GraphQlVariable)
+        .map(|p| format!("{n}: ${n}", n = p.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let inner_args_block = if inner_args.is_empty() {
+        String::new()
+    } else {
+        format!("({inner_args})")
+    };
+
+    let query_str = format!(
+        "subscription {oid}{arg_decl} {{ {oid}{inner_args_block} }}",
+        oid = op.original_id,
+    );
+
+    writeln!(out, "        use futures_util::{{SinkExt, StreamExt}};").unwrap();
+    writeln!(out, "        let ws_url = self.base_url.replace(\"https://\", \"wss://\").replace(\"http://\", \"ws://\");").unwrap();
+    writeln!(out, "        let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url).await?;").unwrap();
+    writeln!(out, "        let (mut write, mut read) = ws_stream.split();").unwrap();
+    writeln!(out).unwrap();
+
+    writeln!(out, "        let init_msg = tokio_tungstenite::tungstenite::Message::Text(").unwrap();
+    writeln!(out, "            r#\"{{\"type\":\"connection_init\"}}\"#.into()").unwrap();
+    writeln!(out, "        );").unwrap();
+    writeln!(out, "        write.send(init_msg).await?;").unwrap();
+    writeln!(out).unwrap();
+
+    writeln!(out, "        if let Some(msg) = read.next().await {{").unwrap();
+    writeln!(out, "            let msg = msg?;").unwrap();
+    writeln!(out, "            if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {{").unwrap();
+    writeln!(out, "                let ack: serde_json::Value = serde_json::from_str(&text)?;").unwrap();
+    writeln!(out, "                if ack.get(\"type\").and_then(|t| t.as_str()) != Some(\"connection_ack\") {{").unwrap();
+    writeln!(out, "                    anyhow::bail!(\"Expected connection_ack, got: {{}}\", text);").unwrap();
+    writeln!(out, "                }}").unwrap();
+    writeln!(out, "            }} else {{").unwrap();
+    writeln!(out, "                anyhow::bail!(\"Expected connection_ack, got non-text message\");").unwrap();
+    writeln!(out, "            }}").unwrap();
+    writeln!(out, "        }} else {{").unwrap();
+    writeln!(out, "            anyhow::bail!(\"Connection closed during handshake\");").unwrap();
+    writeln!(out, "        }}").unwrap();
+    writeln!(out).unwrap();
+
+    writeln!(out, "        let query = \"{}\";", escape(&query_str)).unwrap();
+    writeln!(out, "        let mut vars: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();").unwrap();
+    if !var_decls.is_empty() {
+        writeln!(out, "        {var_decls}").unwrap();
+    }
+    writeln!(out, "        let payload = serde_json::json!({{").unwrap();
+    writeln!(out, "            \"query\": query,").unwrap();
+    writeln!(out, "            \"variables\": serde_json::Value::Object(vars),").unwrap();
+    writeln!(out, "        }});").unwrap();
+    writeln!(out, "        let sub_msg = serde_json::json!({{").unwrap();
+    writeln!(out, "            \"id\": \"sub_1\",").unwrap();
+    writeln!(out, "            \"type\": \"subscribe\",").unwrap();
+    writeln!(out, "            \"payload\": payload,").unwrap();
+    writeln!(out, "        }});").unwrap();
+    writeln!(out, "        let sub_text = serde_json::to_string(&sub_msg)?;").unwrap();
+    writeln!(out, "        write.send(tokio_tungstenite::tungstenite::Message::Text(sub_text.into())).await?;").unwrap();
+    writeln!(out).unwrap();
+
+    writeln!(out, "        let stream = futures_util::stream::unfold((write, read), |(mut write, mut read)| async move {{").unwrap();
+    writeln!(out, "            loop {{").unwrap();
+    writeln!(out, "                match read.next().await {{").unwrap();
+    writeln!(out, "                    Some(Ok(msg)) => {{").unwrap();
+    writeln!(out, "                        match msg {{").unwrap();
+    writeln!(out, "                            tokio_tungstenite::tungstenite::Message::Text(text) => {{").unwrap();
+    writeln!(out, "                                let val: serde_json::Value = match serde_json::from_str(&text) {{").unwrap();
+    writeln!(out, "                                    Ok(v) => v,").unwrap();
+    writeln!(out, "                                    Err(e) => return Some((Err(anyhow::anyhow!(e)), (write, read))),").unwrap();
+    writeln!(out, "                                }};").unwrap();
+    writeln!(out, "                                let msg_type = val.get(\"type\").and_then(|t| t.as_str());").unwrap();
+    writeln!(out, "                                match msg_type {{").unwrap();
+    writeln!(out, "                                    Some(\"ping\") => {{").unwrap();
+    writeln!(out, "                                        let pong_msg = tokio_tungstenite::tungstenite::Message::Text(").unwrap();
+    writeln!(out, "                                            r#\"{{\"type\":\"pong\"}}\"#.into()").unwrap();
+    writeln!(out, "                                        );").unwrap();
+    writeln!(out, "                                        if let Err(e) = write.send(pong_msg).await {{").unwrap();
+    writeln!(out, "                                            return Some((Err(anyhow::anyhow!(e)), (write, read)));").unwrap();
+    writeln!(out, "                                        }}").unwrap();
+    writeln!(out, "                                    }}").unwrap();
+    writeln!(out, "                                    Some(\"pong\") => {{}}").unwrap();
+    writeln!(out, "                                    Some(\"next\") => {{").unwrap();
+    writeln!(out, "                                        let data = val.get(\"payload\")").unwrap();
+    writeln!(out, "                                            .and_then(|p| p.get(\"data\"))").unwrap();
+    writeln!(out, "                                            .and_then(|d| d.get(\"{}\"))", op.original_id).unwrap();
+    writeln!(out, "                                            .cloned()").unwrap();
+    writeln!(out, "                                            .unwrap_or(serde_json::Value::Null);").unwrap();
+    writeln!(out, "                                        let parsed = match serde_json::from_value::<{}>(data) {{", op.return_type).unwrap();
+    writeln!(out, "                                            Ok(p) => p,").unwrap();
+    writeln!(out, "                                            Err(e) => return Some((Err(anyhow::anyhow!(e)), (write, read))),").unwrap();
+    writeln!(out, "                                        }};").unwrap();
+    writeln!(out, "                                        return Some((Ok(parsed), (write, read)));").unwrap();
+    writeln!(out, "                                    }}").unwrap();
+    writeln!(out, "                                    Some(\"error\") => {{").unwrap();
+    writeln!(out, "                                        let errors = val.get(\"payload\").cloned().unwrap_or(serde_json::Value::Null);").unwrap();
+    writeln!(out, "                                        return Some((Err(anyhow::anyhow!(\"GraphQL subscription error: {{}}\", errors)), (write, read)));").unwrap();
+    writeln!(out, "                                    }}").unwrap();
+    writeln!(out, "                                    Some(\"complete\") => {{").unwrap();
+    writeln!(out, "                                        return None;").unwrap();
+    writeln!(out, "                                    }}").unwrap();
+    writeln!(out, "                                    _ => {{}}").unwrap();
+    writeln!(out, "                                }}").unwrap();
+    writeln!(out, "                            }}").unwrap();
+    writeln!(out, "                            tokio_tungstenite::tungstenite::Message::Close(_) => {{").unwrap();
+    writeln!(out, "                                return None;").unwrap();
+    writeln!(out, "                            }}").unwrap();
+    writeln!(out, "                            _ => {{}}").unwrap();
+    writeln!(out, "                        }}").unwrap();
+    writeln!(out, "                    }}").unwrap();
+    writeln!(out, "                    Some(Err(e)) => {{").unwrap();
+    writeln!(out, "                        return Some((Err(anyhow::anyhow!(e)), (write, read)));").unwrap();
+    writeln!(out, "                    }}").unwrap();
+    writeln!(out, "                    None => {{").unwrap();
+    writeln!(out, "                        return None;").unwrap();
+    writeln!(out, "                    }}").unwrap();
+    writeln!(out, "                }}").unwrap();
+    writeln!(out, "            }}").unwrap();
+    writeln!(out, "        }});").unwrap();
+    writeln!(out, "        Ok(stream.boxed())").unwrap();
+}
+
 fn render_grpc_body(out: &mut String, op: &Operation) {
     let parts: Vec<&str> = op.endpoint.split('/').collect();
     if parts.len() < 3 {
@@ -478,12 +660,25 @@ fn render_grpc_body(out: &mut String, op: &Operation) {
         "        let mut client = proto::{service_snake}_client::{service_name}Client::connect(self.base_url.clone()).await?;"
     )
     .unwrap();
-    writeln!(
-        out,
-        "        let response = client.{method_snake}(tonic::Request::new(request)).await?;"
-    )
-    .unwrap();
-    writeln!(out, "        Ok(response.into_inner())").unwrap();
+    if op.streaming == StreamingMode::ClientStream || op.streaming == StreamingMode::BidiStream {
+        writeln!(
+            out,
+            "        let response = client.{method_snake}(request).await?;"
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            out,
+            "        let response = client.{method_snake}(tonic::Request::new(request)).await?;"
+        )
+        .unwrap();
+    }
+    if op.streaming.is_streaming() {
+        writeln!(out, "        use futures_util::StreamExt;").unwrap();
+        writeln!(out, "        Ok(response.into_inner().boxed())").unwrap();
+    } else {
+        writeln!(out, "        Ok(response.into_inner())").unwrap();
+    }
 }
 
 // ---------------------------------------------------------------------------

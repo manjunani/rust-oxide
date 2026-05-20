@@ -129,6 +129,27 @@ fn generates_graphql_crate() {
         serde_json::from_str(&std::fs::read_to_string(tmp.path().join("mcp.json")).unwrap())
             .unwrap();
     assert_eq!(mcp["name"], "gql-demo");
+
+    for name in [
+        "Cargo.toml",
+        "src/lib.rs",
+        "src/main.rs",
+        "SKILL.md",
+        "mcp.json",
+        "module.json",
+        "tests/smoke.rs",
+    ] {
+        let p = tmp.path().join(name);
+        assert!(p.exists(), "expected {name} to exist");
+    }
+
+    // Compile and run the generated smoke test.
+    let status = std::process::Command::new("cargo")
+        .arg("test")
+        .current_dir(tmp.path())
+        .status()
+        .expect("failed to execute cargo test");
+    assert!(status.success(), "cargo test in generated GraphQL crate failed");
 }
 
 #[test]

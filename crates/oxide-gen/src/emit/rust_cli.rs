@@ -7,7 +7,7 @@
 
 use std::fmt::Write;
 
-use crate::ir::{ApiKind, ApiSpec, Operation, Param, ParamLocation};
+use crate::ir::{ApiKind, ApiSpec, Operation, Param, ParamLocation, StreamingMode};
 use crate::parsers::naming::pascal_ident;
 
 /// Render the full `main.rs` contents.
@@ -158,23 +158,48 @@ fn render_match_arm(out: &mut String, op: &Operation) {
         }
     }
 
-    let call_args = op
-        .params
-        .iter()
-        .map(|p| p.name.clone())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let is_client_or_bidi_stream = op.streaming == StreamingMode::ClientStream || op.streaming == StreamingMode::BidiStream;
+    if is_client_or_bidi_stream {
+        let first_param_name = op.params.first().map(|p| p.name.as_str()).unwrap_or("request");
+        writeln!(
+            out,
+            "            let req_stream = futures_util::stream::once(async move {{ {first_param_name} }});"
+        )
+        .unwrap();
+    }
+
+    let call_args = if is_client_or_bidi_stream {
+        "req_stream".to_string()
+    } else {
+        op.params
+            .iter()
+            .map(|p| p.name.clone())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let returns_stream = op.streaming == StreamingMode::ServerStream || op.streaming == StreamingMode::BidiStream;
+    let mut_prefix = if returns_stream { "mut " } else { "" };
     writeln!(
         out,
-        "            let result = client.{name}({call_args}).await?;",
+        "            let {mut_prefix}result = client.{name}({call_args}).await?;",
         name = op.id
     )
     .unwrap();
-    writeln!(
-        out,
-        "            println!(\"{{}}\", serde_json::to_string_pretty(&result)?);"
-    )
-    .unwrap();
+
+    if returns_stream {
+        writeln!(out, "            use futures_util::StreamExt;").unwrap();
+        writeln!(out, "            while let Some(item) = result.next().await {{").unwrap();
+        writeln!(out, "                let item = item?;").unwrap();
+        writeln!(out, "                println!(\"{{}}\", serde_json::to_string_pretty(&item)?);").unwrap();
+        writeln!(out, "            }}").unwrap();
+    } else {
+        writeln!(
+            out,
+            "            println!(\"{{}}\", serde_json::to_string_pretty(&result)?);"
+        )
+        .unwrap();
+    }
     writeln!(out, "        }}").unwrap();
 }
 

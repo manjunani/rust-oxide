@@ -16,6 +16,12 @@ pub fn render(spec: &ApiSpec) -> String {
     if needs_http {
         deps.push_str("reqwest = { version = \"0.12\", features = [\"json\", \"rustls-tls\"], default-features = false }\n");
     }
+    if spec.operations.iter().any(|op| op.streaming.is_streaming()) {
+        deps.push_str("futures-util = \"0.3\"\n");
+        if spec.kind == ApiKind::GraphQl {
+            deps.push_str("tokio-tungstenite = { version = \"0.23\", features = [\"rustls-tls-native-roots\"] }\n");
+        }
+    }
     if needs_tonic {
         deps.push_str(
             "# gRPC scaffold — wire up `tonic` + `prost` once you compile the .proto file.\n",
