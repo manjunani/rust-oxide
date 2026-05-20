@@ -158,9 +158,14 @@ fn render_match_arm(out: &mut String, op: &Operation) {
         }
     }
 
-    let is_client_or_bidi_stream = op.streaming == StreamingMode::ClientStream || op.streaming == StreamingMode::BidiStream;
+    let is_client_or_bidi_stream =
+        op.streaming == StreamingMode::ClientStream || op.streaming == StreamingMode::BidiStream;
     if is_client_or_bidi_stream {
-        let first_param_name = op.params.first().map(|p| p.name.as_str()).unwrap_or("request");
+        let first_param_name = op
+            .params
+            .first()
+            .map(|p| p.name.as_str())
+            .unwrap_or("request");
         writeln!(
             out,
             "            let req_stream = futures_util::stream::once(async move {{ {first_param_name} }});"
@@ -178,7 +183,8 @@ fn render_match_arm(out: &mut String, op: &Operation) {
             .join(", ")
     };
 
-    let returns_stream = op.streaming == StreamingMode::ServerStream || op.streaming == StreamingMode::BidiStream;
+    let returns_stream =
+        op.streaming == StreamingMode::ServerStream || op.streaming == StreamingMode::BidiStream;
     let mut_prefix = if returns_stream { "mut " } else { "" };
     writeln!(
         out,
@@ -189,9 +195,17 @@ fn render_match_arm(out: &mut String, op: &Operation) {
 
     if returns_stream {
         writeln!(out, "            use futures_util::StreamExt;").unwrap();
-        writeln!(out, "            while let Some(item) = result.next().await {{").unwrap();
+        writeln!(
+            out,
+            "            while let Some(item) = result.next().await {{"
+        )
+        .unwrap();
         writeln!(out, "                let item = item?;").unwrap();
-        writeln!(out, "                println!(\"{{}}\", serde_json::to_string_pretty(&item)?);").unwrap();
+        writeln!(
+            out,
+            "                println!(\"{{}}\", serde_json::to_string_pretty(&item)?);"
+        )
+        .unwrap();
         writeln!(out, "            }}").unwrap();
     } else {
         writeln!(

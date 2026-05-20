@@ -149,7 +149,10 @@ fn generates_graphql_crate() {
         .current_dir(tmp.path())
         .status()
         .expect("failed to execute cargo test");
-    assert!(status.success(), "cargo test in generated GraphQL crate failed");
+    assert!(
+        status.success(),
+        "cargo test in generated GraphQL crate failed"
+    );
 }
 
 #[test]

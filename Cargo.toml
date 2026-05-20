@@ -10,6 +10,7 @@ members = [
     "crates/oxide-mcp-server",
     "crates/oxide-graph",
     "crates/oxide-mesh",
+    "crates/oxide-wasm",
 ]
 
 [workspace.package]

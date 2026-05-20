@@ -1,7 +1,7 @@
 //! Emit `src/lib.rs` for the generated crate.
 
-use std::fmt::Write;
 use heck::ToSnakeCase;
+use std::fmt::Write;
 
 use crate::ir::{
     ApiKind, ApiSpec, EnumVariant, Field, HttpMethod, Operation, Param, ParamLocation, Protocol,
@@ -197,9 +197,14 @@ fn render_operation(out: &mut String, spec: &ApiSpec, op: &Operation) {
         .params
         .iter()
         .map(|p| {
-            let is_grpc_client_or_bidi_stream = (op.streaming == StreamingMode::ClientStream || op.streaming == StreamingMode::BidiStream) && op.protocol == Protocol::Grpc;
+            let is_grpc_client_or_bidi_stream = (op.streaming == StreamingMode::ClientStream
+                || op.streaming == StreamingMode::BidiStream)
+                && op.protocol == Protocol::Grpc;
             let ty = if is_grpc_client_or_bidi_stream {
-                format!("impl futures_util::Stream<Item = {}> + Send + 'static", p.rust_type)
+                format!(
+                    "impl futures_util::Stream<Item = {}> + Send + 'static",
+                    p.rust_type
+                )
             } else if p.required {
                 p.rust_type.clone()
             } else {
@@ -214,13 +219,19 @@ fn render_operation(out: &mut String, spec: &ApiSpec, op: &Operation) {
     let ret = if op.streaming.is_streaming() {
         match op.protocol {
             Protocol::GraphQl => {
-                format!("futures_util::stream::BoxStream<'static, anyhow::Result<{}>>", op.return_type)
+                format!(
+                    "futures_util::stream::BoxStream<'static, anyhow::Result<{}>>",
+                    op.return_type
+                )
             }
             Protocol::Grpc => {
                 format!("futures_util::stream::BoxStream<'static, std::result::Result<{}, tonic::Status>>", op.return_type)
             }
             _ => {
-                format!("futures_util::stream::BoxStream<'static, anyhow::Result<{}>>", op.return_type)
+                format!(
+                    "futures_util::stream::BoxStream<'static, anyhow::Result<{}>>",
+                    op.return_type
+                )
             }
         }
     } else {
@@ -535,28 +546,64 @@ fn render_graphql_subscription_body(out: &mut String, op: &Operation) {
 
     writeln!(out, "        use futures_util::{{SinkExt, StreamExt}};").unwrap();
     writeln!(out, "        let ws_url = self.base_url.replace(\"https://\", \"wss://\").replace(\"http://\", \"ws://\");").unwrap();
-    writeln!(out, "        let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url).await?;").unwrap();
-    writeln!(out, "        let (mut write, mut read) = ws_stream.split();").unwrap();
+    writeln!(
+        out,
+        "        let (ws_stream, _) = tokio_tungstenite::connect_async(&ws_url).await?;"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "        let (mut write, mut read) = ws_stream.split();"
+    )
+    .unwrap();
     writeln!(out).unwrap();
 
-    writeln!(out, "        let init_msg = tokio_tungstenite::tungstenite::Message::Text(").unwrap();
-    writeln!(out, "            r#\"{{\"type\":\"connection_init\"}}\"#.into()").unwrap();
+    writeln!(
+        out,
+        "        let init_msg = tokio_tungstenite::tungstenite::Message::Text("
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "            r#\"{{\"type\":\"connection_init\"}}\"#.into()"
+    )
+    .unwrap();
     writeln!(out, "        );").unwrap();
     writeln!(out, "        write.send(init_msg).await?;").unwrap();
     writeln!(out).unwrap();
 
     writeln!(out, "        if let Some(msg) = read.next().await {{").unwrap();
     writeln!(out, "            let msg = msg?;").unwrap();
-    writeln!(out, "            if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {{").unwrap();
-    writeln!(out, "                let ack: serde_json::Value = serde_json::from_str(&text)?;").unwrap();
+    writeln!(
+        out,
+        "            if let tokio_tungstenite::tungstenite::Message::Text(text) = msg {{"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "                let ack: serde_json::Value = serde_json::from_str(&text)?;"
+    )
+    .unwrap();
     writeln!(out, "                if ack.get(\"type\").and_then(|t| t.as_str()) != Some(\"connection_ack\") {{").unwrap();
-    writeln!(out, "                    anyhow::bail!(\"Expected connection_ack, got: {{}}\", text);").unwrap();
+    writeln!(
+        out,
+        "                    anyhow::bail!(\"Expected connection_ack, got: {{}}\", text);"
+    )
+    .unwrap();
     writeln!(out, "                }}").unwrap();
     writeln!(out, "            }} else {{").unwrap();
-    writeln!(out, "                anyhow::bail!(\"Expected connection_ack, got non-text message\");").unwrap();
+    writeln!(
+        out,
+        "                anyhow::bail!(\"Expected connection_ack, got non-text message\");"
+    )
+    .unwrap();
     writeln!(out, "            }}").unwrap();
     writeln!(out, "        }} else {{").unwrap();
-    writeln!(out, "            anyhow::bail!(\"Connection closed during handshake\");").unwrap();
+    writeln!(
+        out,
+        "            anyhow::bail!(\"Connection closed during handshake\");"
+    )
+    .unwrap();
     writeln!(out, "        }}").unwrap();
     writeln!(out).unwrap();
 
@@ -567,14 +614,22 @@ fn render_graphql_subscription_body(out: &mut String, op: &Operation) {
     }
     writeln!(out, "        let payload = serde_json::json!({{").unwrap();
     writeln!(out, "            \"query\": query,").unwrap();
-    writeln!(out, "            \"variables\": serde_json::Value::Object(vars),").unwrap();
+    writeln!(
+        out,
+        "            \"variables\": serde_json::Value::Object(vars),"
+    )
+    .unwrap();
     writeln!(out, "        }});").unwrap();
     writeln!(out, "        let sub_msg = serde_json::json!({{").unwrap();
     writeln!(out, "            \"id\": \"sub_1\",").unwrap();
     writeln!(out, "            \"type\": \"subscribe\",").unwrap();
     writeln!(out, "            \"payload\": payload,").unwrap();
     writeln!(out, "        }});").unwrap();
-    writeln!(out, "        let sub_text = serde_json::to_string(&sub_msg)?;").unwrap();
+    writeln!(
+        out,
+        "        let sub_text = serde_json::to_string(&sub_msg)?;"
+    )
+    .unwrap();
     writeln!(out, "        write.send(tokio_tungstenite::tungstenite::Message::Text(sub_text.into())).await?;").unwrap();
     writeln!(out).unwrap();
 
@@ -583,52 +638,117 @@ fn render_graphql_subscription_body(out: &mut String, op: &Operation) {
     writeln!(out, "                match read.next().await {{").unwrap();
     writeln!(out, "                    Some(Ok(msg)) => {{").unwrap();
     writeln!(out, "                        match msg {{").unwrap();
-    writeln!(out, "                            tokio_tungstenite::tungstenite::Message::Text(text) => {{").unwrap();
+    writeln!(
+        out,
+        "                            tokio_tungstenite::tungstenite::Message::Text(text) => {{"
+    )
+    .unwrap();
     writeln!(out, "                                let val: serde_json::Value = match serde_json::from_str(&text) {{").unwrap();
     writeln!(out, "                                    Ok(v) => v,").unwrap();
     writeln!(out, "                                    Err(e) => return Some((Err(anyhow::anyhow!(e)), (write, read))),").unwrap();
     writeln!(out, "                                }};").unwrap();
     writeln!(out, "                                let msg_type = val.get(\"type\").and_then(|t| t.as_str());").unwrap();
     writeln!(out, "                                match msg_type {{").unwrap();
-    writeln!(out, "                                    Some(\"ping\") => {{").unwrap();
+    writeln!(
+        out,
+        "                                    Some(\"ping\") => {{"
+    )
+    .unwrap();
     writeln!(out, "                                        let pong_msg = tokio_tungstenite::tungstenite::Message::Text(").unwrap();
-    writeln!(out, "                                            r#\"{{\"type\":\"pong\"}}\"#.into()").unwrap();
+    writeln!(
+        out,
+        "                                            r#\"{{\"type\":\"pong\"}}\"#.into()"
+    )
+    .unwrap();
     writeln!(out, "                                        );").unwrap();
-    writeln!(out, "                                        if let Err(e) = write.send(pong_msg).await {{").unwrap();
+    writeln!(
+        out,
+        "                                        if let Err(e) = write.send(pong_msg).await {{"
+    )
+    .unwrap();
     writeln!(out, "                                            return Some((Err(anyhow::anyhow!(e)), (write, read)));").unwrap();
     writeln!(out, "                                        }}").unwrap();
     writeln!(out, "                                    }}").unwrap();
-    writeln!(out, "                                    Some(\"pong\") => {{}}").unwrap();
-    writeln!(out, "                                    Some(\"next\") => {{").unwrap();
-    writeln!(out, "                                        let data = val.get(\"payload\")").unwrap();
-    writeln!(out, "                                            .and_then(|p| p.get(\"data\"))").unwrap();
-    writeln!(out, "                                            .and_then(|d| d.get(\"{}\"))", op.original_id).unwrap();
+    writeln!(
+        out,
+        "                                    Some(\"pong\") => {{}}"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "                                    Some(\"next\") => {{"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "                                        let data = val.get(\"payload\")"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "                                            .and_then(|p| p.get(\"data\"))"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "                                            .and_then(|d| d.get(\"{}\"))",
+        op.original_id
+    )
+    .unwrap();
     writeln!(out, "                                            .cloned()").unwrap();
-    writeln!(out, "                                            .unwrap_or(serde_json::Value::Null);").unwrap();
+    writeln!(
+        out,
+        "                                            .unwrap_or(serde_json::Value::Null);"
+    )
+    .unwrap();
     writeln!(out, "                                        let parsed = match serde_json::from_value::<{}>(data) {{", op.return_type).unwrap();
-    writeln!(out, "                                            Ok(p) => p,").unwrap();
+    writeln!(
+        out,
+        "                                            Ok(p) => p,"
+    )
+    .unwrap();
     writeln!(out, "                                            Err(e) => return Some((Err(anyhow::anyhow!(e)), (write, read))),").unwrap();
     writeln!(out, "                                        }};").unwrap();
-    writeln!(out, "                                        return Some((Ok(parsed), (write, read)));").unwrap();
+    writeln!(
+        out,
+        "                                        return Some((Ok(parsed), (write, read)));"
+    )
+    .unwrap();
     writeln!(out, "                                    }}").unwrap();
-    writeln!(out, "                                    Some(\"error\") => {{").unwrap();
+    writeln!(
+        out,
+        "                                    Some(\"error\") => {{"
+    )
+    .unwrap();
     writeln!(out, "                                        let errors = val.get(\"payload\").cloned().unwrap_or(serde_json::Value::Null);").unwrap();
     writeln!(out, "                                        return Some((Err(anyhow::anyhow!(\"GraphQL subscription error: {{}}\", errors)), (write, read)));").unwrap();
     writeln!(out, "                                    }}").unwrap();
-    writeln!(out, "                                    Some(\"complete\") => {{").unwrap();
+    writeln!(
+        out,
+        "                                    Some(\"complete\") => {{"
+    )
+    .unwrap();
     writeln!(out, "                                        return None;").unwrap();
     writeln!(out, "                                    }}").unwrap();
     writeln!(out, "                                    _ => {{}}").unwrap();
     writeln!(out, "                                }}").unwrap();
     writeln!(out, "                            }}").unwrap();
-    writeln!(out, "                            tokio_tungstenite::tungstenite::Message::Close(_) => {{").unwrap();
+    writeln!(
+        out,
+        "                            tokio_tungstenite::tungstenite::Message::Close(_) => {{"
+    )
+    .unwrap();
     writeln!(out, "                                return None;").unwrap();
     writeln!(out, "                            }}").unwrap();
     writeln!(out, "                            _ => {{}}").unwrap();
     writeln!(out, "                        }}").unwrap();
     writeln!(out, "                    }}").unwrap();
     writeln!(out, "                    Some(Err(e)) => {{").unwrap();
-    writeln!(out, "                        return Some((Err(anyhow::anyhow!(e)), (write, read)));").unwrap();
+    writeln!(
+        out,
+        "                        return Some((Err(anyhow::anyhow!(e)), (write, read)));"
+    )
+    .unwrap();
     writeln!(out, "                    }}").unwrap();
     writeln!(out, "                    None => {{").unwrap();
     writeln!(out, "                        return None;").unwrap();

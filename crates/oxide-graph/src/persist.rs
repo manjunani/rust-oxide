@@ -76,7 +76,7 @@ impl PersistentGraph {
             .execute(&self.pool)
             .await
             .map_err(|e| GraphError::Other(e.into()))?;
-            
+
         sqlx::query("CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target)")
             .execute(&self.pool)
             .await
@@ -89,11 +89,11 @@ impl PersistentGraph {
 #[async_trait]
 impl GraphStore for PersistentGraph {
     async fn upsert_node(&self, node: Node) -> Result<()> {
-        let labels_json = serde_json::to_string(&node.labels)
-            .map_err(|e| GraphError::Other(e.into()))?;
-        let props_json = serde_json::to_string(&node.properties)
-            .map_err(|e| GraphError::Other(e.into()))?;
-        
+        let labels_json =
+            serde_json::to_string(&node.labels).map_err(|e| GraphError::Other(e.into()))?;
+        let props_json =
+            serde_json::to_string(&node.properties).map_err(|e| GraphError::Other(e.into()))?;
+
         sqlx::query(
             r#"INSERT INTO nodes (id, labels, properties)
                VALUES (?1, ?2, ?3)
@@ -111,11 +111,15 @@ impl GraphStore for PersistentGraph {
     }
 
     async fn add_edge(&self, edge: Edge) -> Result<EdgeId> {
-        let props_json = serde_json::to_string(&edge.properties)
-            .map_err(|e| GraphError::Other(e.into()))?;
-        
+        let props_json =
+            serde_json::to_string(&edge.properties).map_err(|e| GraphError::Other(e.into()))?;
+
         // Ensure nodes exist
-        let mut tx = self.pool.begin().await.map_err(|e| GraphError::Other(e.into()))?;
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| GraphError::Other(e.into()))?;
         let source_exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM nodes WHERE id = ?1")
             .bind(&edge.from)
             .fetch_optional(&mut *tx)
@@ -146,7 +150,7 @@ impl GraphStore for PersistentGraph {
         .execute(&mut *tx)
         .await
         .map_err(|e| GraphError::Other(e.into()))?;
-        
+
         tx.commit().await.map_err(|e| GraphError::Other(e.into()))?;
         Ok(edge.id)
     }
@@ -157,14 +161,19 @@ impl GraphStore for PersistentGraph {
             .fetch_optional(&self.pool)
             .await
             .map_err(|e| GraphError::Other(e.into()))?;
-            
+
         if let Some(r) = row {
-            let labels_str: String = r.try_get("labels").map_err(|e| GraphError::Other(e.into()))?;
-            let props_str: String = r.try_get("properties").map_err(|e| GraphError::Other(e.into()))?;
-            
+            let labels_str: String = r
+                .try_get("labels")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let props_str: String = r
+                .try_get("properties")
+                .map_err(|e| GraphError::Other(e.into()))?;
+
             let labels: Vec<String> = serde_json::from_str(&labels_str).unwrap_or_default();
-            let properties: serde_json::Map<String, Value> = serde_json::from_str(&props_str).unwrap_or_default();
-            
+            let properties: serde_json::Map<String, Value> =
+                serde_json::from_str(&props_str).unwrap_or_default();
+
             Ok(Some(Node {
                 id: id.clone(),
                 labels,
@@ -181,15 +190,24 @@ impl GraphStore for PersistentGraph {
             .fetch_optional(&self.pool)
             .await
             .map_err(|e| GraphError::Other(e.into()))?;
-            
+
         if let Some(r) = row {
-            let from: String = r.try_get("source").map_err(|e| GraphError::Other(e.into()))?;
-            let to: String = r.try_get("target").map_err(|e| GraphError::Other(e.into()))?;
-            let label: String = r.try_get("label").map_err(|e| GraphError::Other(e.into()))?;
-            let props_str: String = r.try_get("properties").map_err(|e| GraphError::Other(e.into()))?;
-            
-            let properties: serde_json::Map<String, Value> = serde_json::from_str(&props_str).unwrap_or_default();
-            
+            let from: String = r
+                .try_get("source")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let to: String = r
+                .try_get("target")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let label: String = r
+                .try_get("label")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let props_str: String = r
+                .try_get("properties")
+                .map_err(|e| GraphError::Other(e.into()))?;
+
+            let properties: serde_json::Map<String, Value> =
+                serde_json::from_str(&props_str).unwrap_or_default();
+
             Ok(Some(Edge {
                 id: id.clone(),
                 from,
@@ -209,16 +227,21 @@ impl GraphStore for PersistentGraph {
             .fetch_all(&self.pool)
             .await
             .map_err(|e| GraphError::Other(e.into()))?;
-            
+
         let mut nodes = Vec::new();
         for r in rows {
             let id: String = r.try_get("id").map_err(|e| GraphError::Other(e.into()))?;
-            let labels_str: String = r.try_get("labels").map_err(|e| GraphError::Other(e.into()))?;
-            let props_str: String = r.try_get("properties").map_err(|e| GraphError::Other(e.into()))?;
-            
+            let labels_str: String = r
+                .try_get("labels")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let props_str: String = r
+                .try_get("properties")
+                .map_err(|e| GraphError::Other(e.into()))?;
+
             let labels: Vec<String> = serde_json::from_str(&labels_str).unwrap_or_default();
             if labels.contains(&label.to_string()) {
-                let properties: serde_json::Map<String, Value> = serde_json::from_str(&props_str).unwrap_or_default();
+                let properties: serde_json::Map<String, Value> =
+                    serde_json::from_str(&props_str).unwrap_or_default();
                 nodes.push(Node {
                     id,
                     labels,
@@ -235,22 +258,32 @@ impl GraphStore for PersistentGraph {
         } else {
             "SELECT id, target, label, properties FROM edges WHERE source = ?1"
         };
-        
+
         let mut q = sqlx::query(query).bind(from);
         if let Some(l) = label {
             q = q.bind(l);
         }
-        
-        let rows = q.fetch_all(&self.pool).await.map_err(|e| GraphError::Other(e.into()))?;
-        
+
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| GraphError::Other(e.into()))?;
+
         let mut edges = Vec::new();
         for r in rows {
             let id: String = r.try_get("id").map_err(|e| GraphError::Other(e.into()))?;
-            let to: String = r.try_get("target").map_err(|e| GraphError::Other(e.into()))?;
-            let l: String = r.try_get("label").map_err(|e| GraphError::Other(e.into()))?;
-            let props_str: String = r.try_get("properties").map_err(|e| GraphError::Other(e.into()))?;
-            
-            let properties: serde_json::Map<String, Value> = serde_json::from_str(&props_str).unwrap_or_default();
+            let to: String = r
+                .try_get("target")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let l: String = r
+                .try_get("label")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let props_str: String = r
+                .try_get("properties")
+                .map_err(|e| GraphError::Other(e.into()))?;
+
+            let properties: serde_json::Map<String, Value> =
+                serde_json::from_str(&props_str).unwrap_or_default();
             edges.push(Edge {
                 id,
                 from: from.clone(),
@@ -268,22 +301,32 @@ impl GraphStore for PersistentGraph {
         } else {
             "SELECT id, source, label, properties FROM edges WHERE target = ?1"
         };
-        
+
         let mut q = sqlx::query(query).bind(to);
         if let Some(l) = label {
             q = q.bind(l);
         }
-        
-        let rows = q.fetch_all(&self.pool).await.map_err(|e| GraphError::Other(e.into()))?;
-        
+
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| GraphError::Other(e.into()))?;
+
         let mut edges = Vec::new();
         for r in rows {
             let id: String = r.try_get("id").map_err(|e| GraphError::Other(e.into()))?;
-            let from: String = r.try_get("source").map_err(|e| GraphError::Other(e.into()))?;
-            let l: String = r.try_get("label").map_err(|e| GraphError::Other(e.into()))?;
-            let props_str: String = r.try_get("properties").map_err(|e| GraphError::Other(e.into()))?;
-            
-            let properties: serde_json::Map<String, Value> = serde_json::from_str(&props_str).unwrap_or_default();
+            let from: String = r
+                .try_get("source")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let l: String = r
+                .try_get("label")
+                .map_err(|e| GraphError::Other(e.into()))?;
+            let props_str: String = r
+                .try_get("properties")
+                .map_err(|e| GraphError::Other(e.into()))?;
+
+            let properties: serde_json::Map<String, Value> =
+                serde_json::from_str(&props_str).unwrap_or_default();
             edges.push(Edge {
                 id,
                 from,

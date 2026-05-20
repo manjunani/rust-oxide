@@ -1912,6 +1912,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxide-wasm"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

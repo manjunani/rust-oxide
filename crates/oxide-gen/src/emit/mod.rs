@@ -116,14 +116,22 @@ pub fn emit_crate(spec: &ApiSpec, output_dir: &Path) -> Result<EmitReport> {
         let smoke_test_dir = output_dir.join("tests");
         ensure_dir(&smoke_test_dir)?;
         let smoke_test_code = render_grpc_smoke_test(spec);
-        write_file(&smoke_test_dir.join("smoke.rs"), &smoke_test_code, &mut report)?;
+        write_file(
+            &smoke_test_dir.join("smoke.rs"),
+            &smoke_test_code,
+            &mut report,
+        )?;
     }
 
     if spec.kind == ApiKind::GraphQl && spec.name == "gql_demo" {
         let smoke_test_dir = output_dir.join("tests");
         ensure_dir(&smoke_test_dir)?;
         let smoke_test_code = render_graphql_smoke_test(spec);
-        write_file(&smoke_test_dir.join("smoke.rs"), &smoke_test_code, &mut report)?;
+        write_file(
+            &smoke_test_dir.join("smoke.rs"),
+            &smoke_test_code,
+            &mut report,
+        )?;
     }
 
     Ok(report)
@@ -318,7 +326,6 @@ async fn test_graphql_subscription_smoke() {{
         name = spec.name
     )
 }
-
 
 fn ensure_dir(path: &Path) -> Result<()> {
     fs::create_dir_all(path).map_err(|source| GenError::WriteOutput {

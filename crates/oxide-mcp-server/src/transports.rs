@@ -127,7 +127,10 @@ pub async fn run_websocket(server: Arc<McpServer>, addr: &str) -> Result<()> {
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::Message;
 
-    let listener = TcpListener::bind(addr).await?;
+    // Bind with address reuse to avoid transient bind failures in tests
+    let std_listener = std::net::TcpListener::bind(addr)?;
+    std_listener.set_nonblocking(true)?;
+    let listener = tokio::net::TcpListener::from_std(std_listener)?;
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;
@@ -316,13 +319,10 @@ mod tests {
 
         // Read enough to see the HTTP response headers.
         let mut buf = vec![0u8; 2048];
-        let n = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            stream.read(&mut buf),
-        )
-        .await
-        .expect("read timeout")
-        .unwrap();
+        let n = tokio::time::timeout(std::time::Duration::from_secs(2), stream.read(&mut buf))
+            .await
+            .expect("read timeout")
+            .unwrap();
 
         let response = String::from_utf8_lossy(&buf[..n]);
         assert!(

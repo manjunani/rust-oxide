@@ -70,13 +70,16 @@ impl MirrorStore {
 
     /// Migrate the schema to the latest version (or a specific target).
     pub async fn migrate_to(&self, target_version: Option<i64>) -> Result<()> {
-        sqlx::query("CREATE TABLE IF NOT EXISTS mirror_schema_migrations (version INTEGER PRIMARY KEY)")
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS mirror_schema_migrations (version INTEGER PRIMARY KEY)",
+        )
+        .execute(&self.pool)
+        .await?;
 
-        let current_version: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM mirror_schema_migrations")
-            .fetch_optional(&self.pool)
-            .await?;
+        let current_version: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(version) FROM mirror_schema_migrations")
+                .fetch_optional(&self.pool)
+                .await?;
         let current = current_version.unwrap_or(0);
         let target = target_version.unwrap_or(1);
 
@@ -136,9 +139,11 @@ impl MirrorStore {
             .execute(&mut *tx)
             .await?;
 
-            sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_resource ON mirror_events(resource)")
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "CREATE INDEX IF NOT EXISTS idx_events_resource ON mirror_events(resource)",
+            )
+            .execute(&mut *tx)
+            .await?;
             sqlx::query(
                 "CREATE INDEX IF NOT EXISTS idx_events_source_time ON mirror_events(source, occurred_at)",
             )
