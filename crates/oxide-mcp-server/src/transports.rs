@@ -6,8 +6,10 @@
 //!
 //! Both transports share the purely-functional [`McpServer::handle_line`] core.
 
+#[cfg(any(feature = "sse", feature = "websocket"))]
 use std::sync::Arc;
 
+#[cfg(any(feature = "sse", feature = "websocket"))]
 use crate::{error::Result, server::McpServer};
 
 // ---------------------------------------------------------------------------

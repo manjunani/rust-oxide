@@ -1,0 +1,27 @@
+# CODEOWNERS — auto-assigns reviewers for every PR.
+# Syntax: <path-pattern> <owner> [<owner>...]
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+*                               @manjunani
+
+# Security-sensitive files — require explicit sign-off
+SECURITY.md                     @manjunani
+audit.toml                      @manjunani
+.github/workflows/              @manjunani
+
+# Kernel + WASM — core stability
+crates/oxide-k/                 @manjunani
+crates/oxide-compress/          @manjunani
+
+# LLM orchestration
+crates/oxide-llm-orchestrator/  @manjunani
+
+# Browser automation
+crates/oxide-browser-sh/        @manjunani
+
+# MCP server
+crates/oxide-mcp-server/        @manjunani
+
+# Spec-to-crate generator
+crates/oxide-gen/               @manjunani
