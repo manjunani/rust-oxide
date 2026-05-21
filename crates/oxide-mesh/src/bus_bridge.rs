@@ -171,6 +171,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "tls")]
     use super::*;
     #[cfg(feature = "tls")]
     use oxide_k::bus::{Command, Message};
