@@ -165,9 +165,9 @@ Phases 1 / 3 can overlap. Phase 6 can overlap with the tail of Phase 5.
 - Phase 1: [x] R-05 [x] R-06 [x] R-07 [x] R-08 [x] R-09 [x] R-10 [x] R-11
 - Phase 2: [x] R-12 [x] R-13 [x] R-14
 - Phase 3: [x] R-15 [x] R-16 [x] R-17
-- Phase 4: [ ] R-18 [ ] R-19 [ ] R-20 [ ] R-21
-- Phase 5: [ ] R-22 [ ] R-23
-- Phase 6: [ ] R-24 [ ] R-25
+- Phase 4: [x] R-18 [x] R-19 [x] R-20 [x] R-21
+- Phase 5: [x] R-22 [x] R-23
+- Phase 6: [x] R-24 [ ] R-25
 - Phase 7: [ ] R-26
 
 When every box is ticked, the backlog is empty and Rust Oxide is at `v1.0`.
