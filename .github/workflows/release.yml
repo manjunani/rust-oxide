@@ -121,7 +121,7 @@ jobs:
       - name: Flatten artefacts
         run: |
           mkdir -p dist
-          find artefacts -type f -name "*.tar.gz" -o -name "*.zip" | xargs -I{} cp {} dist/
+          find artefacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} dist/ \;
           ls -al dist
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
