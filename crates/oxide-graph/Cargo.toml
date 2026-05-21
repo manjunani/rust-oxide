@@ -24,10 +24,13 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 
 oxide-k = { path = "../oxide-k" }
-sqlx = { workspace = true, optional = true, features = ["json"] }
+sqlx   = { workspace = true, optional = true, features = ["json"] }
+neo4rs       = { version = "0.8", optional = true }
+futures-util = { version = "0.3", optional = true }
 
 [features]
 persist = ["sqlx"]
+neo4j   = ["dep:neo4rs", "dep:futures-util"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

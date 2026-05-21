@@ -24,6 +24,8 @@ pub mod error;
 pub mod graph;
 pub mod ingest;
 pub mod kernel;
+#[cfg(feature = "neo4j")]
+pub mod neo4j;
 #[cfg(feature = "persist")]
 pub mod persist;
 pub mod query;
@@ -32,4 +34,6 @@ pub use error::{GraphError, Result};
 pub use graph::{Edge, EdgeId, GraphStore, InMemoryGraph, Node, NodeId};
 pub use ingest::{ingest_record, RecordRef};
 pub use kernel::GraphModule;
+#[cfg(feature = "neo4j")]
+pub use neo4j::Neo4jGraph;
 pub use query::{EdgeQuery, NodeQuery};

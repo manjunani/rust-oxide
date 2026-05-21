@@ -18,6 +18,7 @@
 //! Configuration values are stored as JSON text so callers can persist any
 //! `serde::Serialize` type.
 
+#[cfg(feature = "encrypted")]
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
