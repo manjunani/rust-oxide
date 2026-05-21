@@ -23,7 +23,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 
-oxide-k = { path = "../oxide-k", version = "0.1.0" }
+oxide-k = { path = "../oxide-k", version = "0.3.0" }
 sqlx   = { workspace = true, optional = true, features = ["json"] }
 neo4rs       = { version = "0.8", optional = true }
 futures-util = { version = "0.3", optional = true }
