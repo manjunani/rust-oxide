@@ -18,6 +18,8 @@
 //! Configuration values are stored as JSON text so callers can persist any
 //! `serde::Serialize` type.
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -25,6 +27,73 @@ use sqlx::{Row, SqlitePool};
 
 use crate::error::{KernelError, Result};
 use crate::module::{ModuleKind, ModuleMetadata, ModuleState};
+
+// ---------------------------------------------------------------------------
+// Optional AES-256-GCM encryption (feature = "encrypted")
+// ---------------------------------------------------------------------------
+
+/// Opaque encryption context used by [`StateRegistry::open_encrypted`].
+///
+/// Encryption is applied **only** to config values; module metadata is plain
+/// text (it contains no secrets). The key is derived from the caller-supplied
+/// string via SHA-256 so any non-empty string is a valid key.
+///
+/// Wire format: `base64url(nonce[12] ++ ciphertext ++ tag[16])`.
+#[cfg(feature = "encrypted")]
+#[derive(Clone)]
+struct RegistryCipher {
+    cipher: Arc<aes_gcm::Aes256Gcm>,
+}
+
+#[cfg(feature = "encrypted")]
+impl RegistryCipher {
+    /// Derive a 256-bit key from `key_str` via SHA-256 and construct a cipher.
+    fn new(key_str: &str) -> Self {
+        use aes_gcm::aead::KeyInit;
+        use sha2::{Digest, Sha256};
+
+        let key_bytes = Sha256::digest(key_str.as_bytes());
+        let cipher = aes_gcm::Aes256Gcm::new(&key_bytes);
+        Self {
+            cipher: Arc::new(cipher),
+        }
+    }
+
+    fn encrypt(&self, plaintext: &str) -> anyhow::Result<String> {
+        use aes_gcm::aead::{AeadCore, AeadMut, OsRng};
+        use base64ct::{Base64Url, Encoding};
+
+        let nonce = aes_gcm::Aes256Gcm::generate_nonce(&mut OsRng);
+        // Aes256Gcm::encrypt_in_place_detached is the underlying operation;
+        // using the simpler `encrypt` API which returns ciphertext + tag appended.
+        let mut cipher = (*self.cipher).clone();
+        let ciphertext = cipher
+            .encrypt(&nonce, plaintext.as_bytes())
+            .map_err(|e| anyhow::anyhow!("encrypt: {e}"))?;
+
+        let mut blob = nonce.to_vec();
+        blob.extend_from_slice(&ciphertext);
+        Ok(Base64Url::encode_string(&blob))
+    }
+
+    fn decrypt(&self, encoded: &str) -> anyhow::Result<String> {
+        use aes_gcm::aead::AeadMut;
+        use base64ct::{Base64Url, Encoding};
+
+        let blob =
+            Base64Url::decode_vec(encoded).map_err(|e| anyhow::anyhow!("base64 decode: {e}"))?;
+        if blob.len() < 12 {
+            return Err(anyhow::anyhow!("encrypted blob too short"));
+        }
+        let (nonce_bytes, ciphertext) = blob.split_at(12);
+        let nonce = aes_gcm::Nonce::from_slice(nonce_bytes);
+        let mut cipher = (*self.cipher).clone();
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext)
+            .map_err(|e| anyhow::anyhow!("decrypt: {e}"))?;
+        String::from_utf8(plaintext).map_err(|e| anyhow::anyhow!("utf8: {e}"))
+    }
+}
 
 /// A record stored in the `modules` table.
 #[derive(Debug, Clone)]
@@ -48,18 +117,21 @@ pub struct ModuleRecord {
 /// The kernel's persistent registry of module metadata and configuration.
 ///
 /// Internally backed by an `sqlx::SqlitePool`. Cheaply cloneable.
+///
+/// Config values are optionally encrypted at rest with AES-256-GCM when the
+/// registry is opened via [`StateRegistry::open_encrypted`] (requires the
+/// `encrypted` Cargo feature).
 #[derive(Clone)]
 pub struct StateRegistry {
     pool: SqlitePool,
+    #[cfg(feature = "encrypted")]
+    cipher: Option<RegistryCipher>,
 }
 
 impl StateRegistry {
     /// Create a new in-memory registry. Suitable for tests and early
     /// development.
     pub async fn in_memory() -> Result<Self> {
-        // `:memory:` databases are connection-local, so we restrict the pool to
-        // a single connection. Otherwise every checkout would see a fresh,
-        // empty database.
         let options = SqliteConnectOptions::new()
             .in_memory(true)
             .create_if_missing(true);
@@ -68,7 +140,11 @@ impl StateRegistry {
             .connect_with(options)
             .await?;
 
-        let registry = Self { pool };
+        let registry = Self {
+            pool,
+            #[cfg(feature = "encrypted")]
+            cipher: None,
+        };
         registry.migrate().await?;
         Ok(registry)
     }
@@ -83,9 +159,54 @@ impl StateRegistry {
             .connect_with(options)
             .await?;
 
-        let registry = Self { pool };
+        let registry = Self {
+            pool,
+            #[cfg(feature = "encrypted")]
+            cipher: None,
+        };
         registry.migrate().await?;
         Ok(registry)
+    }
+
+    /// Open or create an **encrypted** on-disk registry.
+    ///
+    /// Config values are stored as AES-256-GCM ciphertext; the key is derived
+    /// from `key_str` via SHA-256. Module metadata rows remain plaintext.
+    ///
+    /// To read the key from the environment use
+    /// [`StateRegistry::key_from_env`] as the `key_str` argument.
+    ///
+    /// *Requires the `encrypted` Cargo feature.*
+    #[cfg(feature = "encrypted")]
+    pub async fn open_encrypted(path: &str, key_str: &str) -> Result<Self> {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect_with(options)
+            .await?;
+
+        let registry = Self {
+            pool,
+            cipher: Some(RegistryCipher::new(key_str)),
+        };
+        registry.migrate().await?;
+        Ok(registry)
+    }
+
+    /// Read the registry encryption key from the `OXIDE_REGISTRY_KEY`
+    /// environment variable.
+    ///
+    /// Returns an error if the variable is not set or is empty.
+    #[cfg(feature = "encrypted")]
+    pub fn key_from_env() -> Result<String> {
+        std::env::var("OXIDE_REGISTRY_KEY").map_err(|_| {
+            KernelError::Other(anyhow::anyhow!(
+                "OXIDE_REGISTRY_KEY env var not set; \
+                 set it or call open_encrypted with an explicit key"
+            ))
+        })
     }
 
     /// Read-only access to the underlying `sqlx` pool. Used by the XAI
@@ -209,8 +330,24 @@ impl StateRegistry {
     // -----------------------------------------------------------------------
 
     /// Persist a configuration value. The value is serialized to JSON.
+    ///
+    /// When the registry was opened via [`Self::open_encrypted`] the stored
+    /// value is AES-256-GCM ciphertext; otherwise it is plain JSON.
     pub async fn set_config<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
         let json = serde_json::to_string(value)?;
+
+        #[cfg(feature = "encrypted")]
+        let stored = if let Some(cipher) = &self.cipher {
+            cipher
+                .encrypt(&json)
+                .map_err(|e| KernelError::Other(anyhow::anyhow!("config encrypt: {e}")))?
+        } else {
+            json
+        };
+
+        #[cfg(not(feature = "encrypted"))]
+        let stored = json;
+
         let now = Utc::now().to_rfc3339();
         sqlx::query(
             r#"
@@ -222,7 +359,7 @@ impl StateRegistry {
             "#,
         )
         .bind(key)
-        .bind(json)
+        .bind(stored)
         .bind(now)
         .execute(&self.pool)
         .await?;
@@ -231,6 +368,8 @@ impl StateRegistry {
 
     /// Fetch a configuration value and deserialize it. Returns
     /// [`KernelError::ConfigNotFound`] if the key does not exist.
+    ///
+    /// Transparently decrypts when the registry is encrypted.
     pub async fn get_config<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
         let row = sqlx::query("SELECT value FROM config WHERE key = ?1")
             .bind(key)
@@ -241,8 +380,21 @@ impl StateRegistry {
             return Err(KernelError::ConfigNotFound(key.to_string()));
         };
 
-        let value: String = row.try_get("value").map_err(KernelError::Registry)?;
-        let parsed: T = serde_json::from_str(&value)?;
+        let stored: String = row.try_get("value").map_err(KernelError::Registry)?;
+
+        #[cfg(feature = "encrypted")]
+        let json = if let Some(cipher) = &self.cipher {
+            cipher
+                .decrypt(&stored)
+                .map_err(|e| KernelError::Other(anyhow::anyhow!("config decrypt: {e}")))?
+        } else {
+            stored
+        };
+
+        #[cfg(not(feature = "encrypted"))]
+        let json = stored;
+
+        let parsed: T = serde_json::from_str(&json)?;
         Ok(parsed)
     }
 
@@ -283,6 +435,60 @@ fn row_to_module_record(row: sqlx::sqlite::SqliteRow) -> Result<ModuleRecord> {
         description: row.try_get("description").map_err(KernelError::Registry)?,
         updated_at,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Encrypted-registry tests (feature = "encrypted")
+// ---------------------------------------------------------------------------
+
+#[cfg(all(test, feature = "encrypted"))]
+mod encrypted_tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[tokio::test]
+    async fn encrypted_config_round_trips() {
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap();
+
+        {
+            let reg = StateRegistry::open_encrypted(path, "s3cr3t-key")
+                .await
+                .unwrap();
+            reg.set_config("api_token", &"my-super-secret-token")
+                .await
+                .unwrap();
+            let v: String = reg.get_config("api_token").await.unwrap();
+            assert_eq!(v, "my-super-secret-token");
+        }
+
+        // Reopen — data persists across registry handles.
+        let reg2 = StateRegistry::open_encrypted(path, "s3cr3t-key")
+            .await
+            .unwrap();
+        let v2: String = reg2.get_config("api_token").await.unwrap();
+        assert_eq!(v2, "my-super-secret-token");
+    }
+
+    #[tokio::test]
+    async fn encrypted_value_not_readable_as_plain_json() {
+        let tmp = NamedTempFile::new().unwrap();
+        let reg = StateRegistry::open_encrypted(tmp.path().to_str().unwrap(), "key")
+            .await
+            .unwrap();
+        reg.set_config("secret", &42i32).await.unwrap();
+
+        // Open same file WITHOUT encryption key — raw stored value is ciphertext.
+        let plain = StateRegistry::connect(tmp.path().to_str().unwrap())
+            .await
+            .unwrap();
+        // `get_config` treats the blob as raw JSON → deserialization fails.
+        let err = plain.get_config::<i32>("secret").await.unwrap_err();
+        assert!(
+            matches!(err, KernelError::Serde(_)),
+            "expected Serde error, got {err}"
+        );
+    }
 }
 
 impl std::fmt::Debug for StateRegistry {

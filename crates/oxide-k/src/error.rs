@@ -34,6 +34,15 @@ pub enum KernelError {
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
 
+    /// A publish was rejected because the publisher lacks the required capability.
+    #[error("access denied: `{publisher}` lacks capability `{capability}`")]
+    Denied {
+        /// The publisher that attempted the operation.
+        publisher: String,
+        /// The capability required.
+        capability: String,
+    },
+
     /// An unexpected, unclassified error.
     #[error(transparent)]
     Other(#[from] anyhow::Error),

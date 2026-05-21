@@ -22,6 +22,7 @@
 #![deny(rust_2018_idioms)]
 #![warn(missing_docs)]
 
+pub mod bus_bridge;
 pub mod crdt;
 pub mod error;
 pub mod kernel;
@@ -29,6 +30,7 @@ pub mod local;
 pub mod message;
 pub mod tcp;
 
+pub use bus_bridge::BusBridge;
 pub use crdt::{GSet, LwwRegister, PnCounter};
 pub use error::{MeshError, Result};
 pub use kernel::MeshModule;

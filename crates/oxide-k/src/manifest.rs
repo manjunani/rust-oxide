@@ -48,6 +48,11 @@ pub struct ModuleManifest {
     /// List of operation ids exposed by the module.
     #[serde(default)]
     pub operations: Vec<String>,
+    /// Capability tokens this module is granted on the bus. Populated by
+    /// the kernel when registering the module; used with
+    /// [`crate::bus::MessageBus::publish_with_capability`].
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 impl ModuleManifest {

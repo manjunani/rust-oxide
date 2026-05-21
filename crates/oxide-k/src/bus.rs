@@ -21,6 +21,7 @@
 //! and capability-based access control will be layered on top in later
 //! iterations.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -29,6 +30,30 @@ use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 
 use crate::error::{KernelError, Result};
+
+// ---------------------------------------------------------------------------
+// Capability tokens
+// ---------------------------------------------------------------------------
+
+/// An opaque capability token that grants a module the right to publish on
+/// the bus.
+///
+/// Capabilities are strings (e.g. `"browser:navigate"`, `"llm:complete"`).
+/// The bus maintains a **grant set**; `publish_with_capability` rejects any
+/// token not present in the set. Use [`MessageBus::grant_capability`] to
+/// register allowed tokens.
+///
+/// The unguarded [`MessageBus::publish`] remains available for internal
+/// kernel use and backward compatibility.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Capability(pub String);
+
+impl Capability {
+    /// Create a capability from any string.
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+}
 
 /// A command instructs a module (or the kernel) to perform an action.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,6 +189,9 @@ pub struct MessageBus {
 #[derive(Default)]
 struct BusInner {
     subscribers: RwLock<Vec<Subscriber>>,
+    /// Granted capability tokens. Empty means "no ACL enforced" for the
+    /// unguarded `publish`; `publish_with_capability` always checks this set.
+    granted: RwLock<HashSet<String>>,
 }
 
 struct Subscriber {
@@ -176,6 +204,45 @@ impl MessageBus {
     pub fn new() -> Self {
         Self::default()
     }
+
+    // -----------------------------------------------------------------------
+    // Capability management
+    // -----------------------------------------------------------------------
+
+    /// Grant a capability token. After this call, any source holding `cap`
+    /// may call [`Self::publish_with_capability`] successfully.
+    pub async fn grant_capability(&self, cap: Capability) {
+        self.inner.granted.write().await.insert(cap.0);
+    }
+
+    /// Revoke a previously granted capability.
+    pub async fn revoke_capability(&self, cap: &Capability) {
+        self.inner.granted.write().await.remove(&cap.0);
+    }
+
+    /// Publish an [`Envelope`] **only if `cap` has been granted**.
+    ///
+    /// Returns [`KernelError::Denied`] if the capability is not in the grant
+    /// set. On success, routes the envelope identically to [`Self::publish`].
+    pub async fn publish_with_capability(
+        &self,
+        envelope: Envelope,
+        cap: &Capability,
+    ) -> Result<()> {
+        let granted = self.inner.granted.read().await;
+        if !granted.contains(&cap.0) {
+            return Err(KernelError::Denied {
+                publisher: envelope.source.clone(),
+                capability: cap.0.clone(),
+            });
+        }
+        drop(granted);
+        self.publish(envelope).await
+    }
+
+    // -----------------------------------------------------------------------
+    // Subscribers
+    // -----------------------------------------------------------------------
 
     /// Register a new subscriber and return a [`Subscription`] handle.
     pub async fn subscribe(&self) -> Subscription {
@@ -327,5 +394,61 @@ mod tests {
 
         let received = sub.receiver.recv().await.unwrap();
         assert_eq!(received.correlation_id, Some(cid));
+    }
+
+    // -------------------------------------------------------------------
+    // Capability ACL tests (R-19)
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn granted_capability_allows_publish() {
+        let bus = MessageBus::new();
+        let mut sub = bus.subscribe().await;
+
+        let cap = Capability::new("browser:navigate");
+        bus.grant_capability(cap.clone()).await;
+
+        let env = Envelope::new("browser-module", Message::Command(Command::Ping));
+        bus.publish_with_capability(env, &cap).await.unwrap();
+
+        let recv = sub.receiver.recv().await.unwrap();
+        assert!(matches!(recv.message, Message::Command(Command::Ping)));
+    }
+
+    #[tokio::test]
+    async fn unganted_capability_returns_denied() {
+        let bus = MessageBus::new();
+        let cap = Capability::new("llm:complete");
+        // Not granted — no call to grant_capability.
+        let env = Envelope::new("llm-module", Message::Command(Command::Ping));
+        let err = bus.publish_with_capability(env, &cap).await.unwrap_err();
+        assert!(
+            matches!(err, KernelError::Denied { .. }),
+            "expected Denied, got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn revoked_capability_is_denied() {
+        let bus = MessageBus::new();
+        let cap = Capability::new("mirror:sync");
+        bus.grant_capability(cap.clone()).await;
+        bus.revoke_capability(&cap).await;
+
+        let env = Envelope::new("mirror-module", Message::Command(Command::Ping));
+        let err = bus.publish_with_capability(env, &cap).await.unwrap_err();
+        assert!(matches!(err, KernelError::Denied { .. }));
+    }
+
+    #[tokio::test]
+    async fn unguarded_publish_bypasses_acl() {
+        // The plain publish() must still work regardless of grant set.
+        let bus = MessageBus::new();
+        let mut sub = bus.subscribe().await;
+        bus.send_command("kernel-internal", Command::Ping)
+            .await
+            .unwrap();
+        let recv = sub.receiver.recv().await.unwrap();
+        assert!(matches!(recv.message, Message::Command(Command::Ping)));
     }
 }
