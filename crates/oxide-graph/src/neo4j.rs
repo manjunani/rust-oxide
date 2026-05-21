@@ -288,9 +288,14 @@ mod tests {
     use serde_json::json;
 
     async fn connect() -> Option<Neo4jGraph> {
-        Neo4jGraph::connect("bolt://localhost:7687", "neo4j", "password")
-            .await
-            .ok()
+        let uri = std::env::var("NEO4J_URI")
+            .unwrap_or_else(|_| "bolt://localhost:7687".into());
+        let user = std::env::var("NEO4J_USER")
+            .unwrap_or_else(|_| "neo4j".into());
+        // Use NEO4J_PASS env var; fall back to the standard docker dev default.
+        let pass = std::env::var("NEO4J_PASS")
+            .unwrap_or_else(|_| "password".into());
+        Neo4jGraph::connect(&uri, &user, &pass).await.ok()
     }
 
     #[tokio::test]

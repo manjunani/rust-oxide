@@ -36,8 +36,8 @@ chromiumoxide = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 scraper = { workspace = true }
 
-oxide-k = { path = "../oxide-k" }
-oxide-compress = { path = "../oxide-compress" }
+oxide-k = { path = "../oxide-k", version = "0.1.0" }
+oxide-compress = { path = "../oxide-compress", version = "0.1.0" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

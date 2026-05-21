@@ -27,7 +27,7 @@ tracing-subscriber = { workspace = true }
 async-trait = { workspace = true }
 uuid = { workspace = true }
 
-oxide-k = { path = "../oxide-k" }
+oxide-k = { path = "../oxide-k", version = "0.1.0" }
 axum = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
