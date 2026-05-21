@@ -26,7 +26,12 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use oxide_k::bus::{Envelope, MessageBus};
+use oxide_k::bus::Envelope;
+#[cfg(feature = "tls")]
+use oxide_k::bus::MessageBus;
+#[cfg(not(feature = "tls"))]
+use tokio::io::AsyncWriteExt;
+#[cfg(feature = "tls")]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(feature = "tls")]
 use tokio::net::{TcpListener, TcpStream};
