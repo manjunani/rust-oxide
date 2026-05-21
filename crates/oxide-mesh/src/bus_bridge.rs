@@ -22,11 +22,13 @@
 //!
 //! Requires the `tls` Cargo feature on `oxide-mesh`.
 
+#[cfg(feature = "tls")]
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use oxide_k::bus::{Envelope, MessageBus};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(feature = "tls")]
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 
@@ -126,6 +128,7 @@ impl BusBridge {
 }
 
 /// Read JSON-line envelopes from `stream` and publish each onto `bus`.
+#[cfg(feature = "tls")]
 async fn relay_inbound<S>(stream: S, bus: MessageBus) -> Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -164,7 +167,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "tls")]
     use oxide_k::bus::{Command, Message};
+    #[cfg(feature = "tls")]
     use std::net::Ipv4Addr;
 
     /// End-to-end: bridge two in-process buses over TLS using rcgen certs.
