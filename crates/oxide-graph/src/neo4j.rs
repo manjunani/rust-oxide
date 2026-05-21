@@ -287,14 +287,12 @@ mod tests {
     use crate::graph::Edge;
     use serde_json::json;
 
+    /// Returns `None` when Neo4j env vars are absent or the server is unreachable.
+    /// Set NEO4J_URI / NEO4J_USER / NEO4J_PASS before running ignored tests.
     async fn connect() -> Option<Neo4jGraph> {
-        let uri = std::env::var("NEO4J_URI")
-            .unwrap_or_else(|_| "bolt://localhost:7687".into());
-        let user = std::env::var("NEO4J_USER")
-            .unwrap_or_else(|_| "neo4j".into());
-        // Use NEO4J_PASS env var; fall back to the standard docker dev default.
-        let pass = std::env::var("NEO4J_PASS")
-            .unwrap_or_else(|_| "password".into());
+        let uri = std::env::var("NEO4J_URI").ok()?;
+        let user = std::env::var("NEO4J_USER").ok()?;
+        let pass = std::env::var("NEO4J_PASS").ok()?;
         Neo4jGraph::connect(&uri, &user, &pass).await.ok()
     }
 
