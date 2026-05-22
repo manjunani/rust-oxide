@@ -26,6 +26,8 @@ pub mod bus_bridge;
 pub mod crdt;
 pub mod error;
 pub mod kernel;
+#[cfg(feature = "libp2p")]
+pub mod libp2p_mesh;
 pub mod local;
 pub mod message;
 pub mod tcp;
@@ -34,6 +36,8 @@ pub use bus_bridge::BusBridge;
 pub use crdt::{GSet, LwwRegister, PnCounter};
 pub use error::{MeshError, Result};
 pub use kernel::MeshModule;
+#[cfg(feature = "libp2p")]
+pub use libp2p_mesh::Libp2pMesh;
 pub use local::{LocalMesh, MeshHandle, PeerHandle};
 pub use message::{PeerCapability, PeerId, PeerMessage};
 pub use tcp::TcpMesh;

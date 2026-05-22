@@ -13,7 +13,8 @@ name = "oxide_mesh"
 path = "src/lib.rs"
 
 [features]
-tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile"]
+tls    = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile"]
+libp2p = ["dep:libp2p", "dep:futures"]
 
 [dependencies]
 tokio          = { workspace = true }
@@ -28,6 +29,10 @@ uuid           = { workspace = true }
 tokio-rustls   = { version = "0.26", optional = true }
 rustls         = { version = "0.23", features = ["ring"], optional = true }
 rustls-pemfile = { version = "2",    optional = true }
+libp2p         = { version = "0.56", optional = true, features = [
+    "gossipsub", "kad", "identify", "noise", "yamux", "tcp", "tokio", "macros",
+] }
+futures        = { version = "0.3", optional = true }
 
 oxide-k = { path = "../oxide-k", version = "0.3.0" }
 
