@@ -1,5 +1,8 @@
 //! SQLite-backed [`MirrorStore`].
 
+use std::future::Future;
+use std::pin::Pin;
+
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow};
@@ -8,6 +11,49 @@ use sqlx::{Column, Row, SqlitePool, TypeInfo};
 use crate::conflict::{ConflictResolution, ConflictStrategy};
 use crate::error::{MirrorError, Result};
 use crate::event::{Delta, DeltaOp, MirroredRecord, Provenance};
+
+// ---------------------------------------------------------------------------
+// Migration registry (R-16)
+// ---------------------------------------------------------------------------
+
+type MigrationBoxFut<'a> = Pin<Box<dyn Future<Output = crate::error::Result<()>> + Send + 'a>>;
+
+struct MigrationEntry {
+    f: Box<dyn Fn(&SqlitePool) -> MigrationBoxFut<'_> + Send + Sync>,
+}
+
+/// Registry of versioned schema migrations for [`MirrorStore::apply_migrations`].
+///
+/// Register migrations in ascending version order. Each migration receives a
+/// shared `&SqlitePool` and must return a pinned async future.
+#[derive(Default)]
+pub struct MigrationRegistry {
+    migrations: Vec<(u32, MigrationEntry)>,
+}
+
+impl MigrationRegistry {
+    /// Create an empty registry.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a migration at `version`. Versions must be unique and > 0.
+    /// Call order is preserved; the registry is applied in insertion order.
+    #[must_use]
+    pub fn register<F>(mut self, version: u32, _description: &str, f: F) -> Self
+    where
+        F: Fn(&SqlitePool) -> Pin<Box<dyn Future<Output = crate::error::Result<()>> + Send + '_>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        self.migrations
+            .push((version, MigrationEntry { f: Box::new(f) }));
+        self
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 /// Outcome of [`MirrorStore::apply_delta`].
 #[derive(Debug, Clone)]
@@ -67,6 +113,51 @@ impl MirrorStore {
     // -----------------------------------------------------------------------
     // Schema
     // -----------------------------------------------------------------------
+
+    /// Apply caller-supplied migrations from `registry` up to `target_version`.
+    ///
+    /// Each migration in the registry is applied in version order if not already
+    /// recorded in `mirror_schema_migrations`. Idempotent — re-running never
+    /// re-applies a migration that already has a row in the table.
+    ///
+    /// ```rust,ignore
+    /// let registry = MigrationRegistry::new()
+    ///     .register(2, "add tags column", Box::new(|pool| Box::pin(async move {
+    ///         sqlx::query("ALTER TABLE mirror_records ADD COLUMN tags TEXT")
+    ///             .execute(pool).await?;
+    ///         Ok(())
+    ///     })));
+    /// store.apply_migrations(2, &registry).await?;
+    /// ```
+    pub async fn apply_migrations(
+        &self,
+        target_version: u32,
+        registry: &MigrationRegistry,
+    ) -> Result<()> {
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS mirror_schema_migrations (version INTEGER PRIMARY KEY)",
+        )
+        .execute(&self.pool)
+        .await?;
+
+        let current: Option<i64> =
+            sqlx::query_scalar("SELECT MAX(version) FROM mirror_schema_migrations")
+                .fetch_optional(&self.pool)
+                .await?;
+        let current = current.unwrap_or(0) as u32;
+
+        for (ver, migration) in &registry.migrations {
+            if *ver <= current || *ver > target_version {
+                continue;
+            }
+            (migration.f)(&self.pool).await?;
+            sqlx::query("INSERT OR IGNORE INTO mirror_schema_migrations (version) VALUES (?1)")
+                .bind(*ver as i64)
+                .execute(&self.pool)
+                .await?;
+        }
+        Ok(())
+    }
 
     /// Migrate the schema to the latest version (or a specific target).
     pub async fn migrate_to(&self, target_version: Option<i64>) -> Result<()> {
@@ -794,5 +885,67 @@ mod tests {
         let delta = stream.next().await.unwrap();
         assert_eq!(delta.resource, "pets");
         assert_eq!(delta.record_id, "1");
+    }
+
+    // -----------------------------------------------------------------------
+    // MigrationRegistry tests (R-16)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn migration_registry_applies_new_version() {
+        let store = MirrorStore::in_memory().await.unwrap();
+
+        // Register a migration that adds a `tags` column to mirror_records.
+        let registry =
+            MigrationRegistry::new().register(2, "add tags column", |pool: &SqlitePool| {
+                let pool = pool.clone();
+                Box::pin(async move {
+                    sqlx::query(
+                        "ALTER TABLE mirror_records ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
+                    )
+                    .execute(&pool)
+                    .await
+                    .map(|_| ())
+                    .map_err(crate::error::MirrorError::Sql)
+                }) as Pin<Box<dyn Future<Output = crate::error::Result<()>> + Send>>
+            });
+
+        store.apply_migrations(2, &registry).await.unwrap();
+
+        // Verify column exists by inserting a value into it.
+        sqlx::query("UPDATE mirror_records SET tags = 'test' WHERE 1=0")
+            .execute(store.pool())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn migration_registry_is_idempotent() {
+        let store = MirrorStore::in_memory().await.unwrap();
+        let mut call_count = std::sync::Arc::new(std::sync::Mutex::new(0u32));
+        let counter = call_count.clone();
+
+        let registry =
+            MigrationRegistry::new().register(2, "counted migration", move |pool: &SqlitePool| {
+                let pool = pool.clone();
+                let counter = counter.clone();
+                Box::pin(async move {
+                    *counter.lock().unwrap() += 1;
+                    sqlx::query("ALTER TABLE mirror_records ADD COLUMN idempotent_col TEXT")
+                        .execute(&pool)
+                        .await
+                        .map(|_| ())
+                        .map_err(crate::error::MirrorError::Sql)
+                }) as Pin<Box<dyn Future<Output = crate::error::Result<()>> + Send>>
+            });
+
+        store.apply_migrations(2, &registry).await.unwrap();
+        store.apply_migrations(2, &registry).await.unwrap(); // second call must be no-op
+
+        assert_eq!(
+            *call_count.lock().unwrap(),
+            1,
+            "migration ran more than once"
+        );
     }
 }

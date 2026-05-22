@@ -241,6 +241,10 @@ mod tests {
 
     /// Two nodes on TCP loopback: node B subscribes, node A publishes,
     /// node B receives the message.
+    ///
+    /// Note: libp2p removed `MemoryTransport` from `libp2p-core` in 0.54+.
+    /// TCP loopback with an ephemeral port is the idiomatic in-process test
+    /// transport in libp2p 0.56 — functionally equivalent.
     #[tokio::test]
     async fn two_nodes_exchange_gossipsub_message() {
         const TOPIC: &str = "oxide/test";

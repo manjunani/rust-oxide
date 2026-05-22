@@ -263,20 +263,22 @@ fn render_operation(out: &mut String, spec: &ApiSpec, op: &Operation) {
 }
 
 fn render_streaming_body(out: &mut String, op: &Operation) {
-    writeln!(
-        out,
-        "        // Streaming ({}) scaffold. Wire `tonic` server-streaming or a GraphQL subscription client to fulfil this method.",
-        op.streaming.label()
-    )
-    .unwrap();
+    // Emit compilable code: suppress unused-variable warnings then return an
+    // immediate error stream. This protocol's streaming runtime is not yet
+    // supported; callers get a typed Stream that yields one Err on first poll.
     for p in &op.params {
         writeln!(out, "        let _ = &{n};", n = p.name).unwrap();
     }
     writeln!(
         out,
-        "        anyhow::bail!(\"streaming operation `{}` ({}) not yet wired; regenerate after attaching a streaming runtime.\");",
-        op.original_id,
-        op.streaming.label()
+        "        let msg = format!(\"streaming operation `{id}` ({lbl}) is not supported for this protocol; use GraphQL subscriptions or gRPC streaming instead.\");",
+        id = op.original_id,
+        lbl = op.streaming.label()
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "        Ok(Box::pin(futures::stream::once(async move {{ Err(anyhow::anyhow!(msg)) }})))"
     )
     .unwrap();
 }

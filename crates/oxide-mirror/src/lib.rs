@@ -45,5 +45,5 @@ pub use error::{MirrorError, Result};
 pub use event::{Delta, DeltaOp, MirroredRecord, Provenance};
 pub use kernel::MirrorModule;
 pub use source::{PullResult, StaticSource, SyncSource};
-pub use store::MirrorStore;
+pub use store::{MigrationRegistry, MirrorStore};
 pub use sync::{SyncReport, Syncer};
