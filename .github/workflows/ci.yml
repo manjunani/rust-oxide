@@ -79,7 +79,7 @@ jobs:
       - name: wasm-pack build --target web
         run: wasm-pack build crates/oxide-compress --target web --release
       - name: Upload wasm artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: oxide-compress-wasm
           path: |

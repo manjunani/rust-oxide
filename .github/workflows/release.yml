@@ -81,7 +81,7 @@ jobs:
           fi
 
       - name: Upload artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ASSET }}
           path: ${{ env.ASSET }}
@@ -103,7 +103,7 @@ jobs:
           ver="${GITHUB_REF_NAME#v}"
           (cd crates/oxide-compress && tar czf "oxide-compress-${ver}-wasm.tar.gz" pkg)
           echo "ASSET=oxide-compress-${ver}-wasm.tar.gz" >> "$GITHUB_ENV"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ASSET }}
           path: crates/oxide-compress/${{ env.ASSET }}
