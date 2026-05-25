@@ -43,7 +43,7 @@ rand             = { version = "0.8",  optional = true }
 [dependencies.wasmtime]
 # Pinned past every known advisory (CVE-2026-35186 family + earlier);
 # track `cargo audit` and bump as new advisories land.
-version = "44"
+version = "45"
 default-features = false
 features = ["cranelift", "runtime", "std"]
 optional = true
