@@ -38,7 +38,7 @@ oxide-k = { path = "../oxide-k", version = "0.3.0" }
 
 [dev-dependencies]
 tokio          = { workspace = true, features = ["test-util", "macros"] }
-rcgen          = { version = "0.13", features = ["pem"] }
+rcgen          = { version = "0.14", features = ["pem"] }
 rustls         = { version = "0.23", features = ["ring"] }
 tokio-rustls   = { version = "0.26" }
 rustls-pemfile = { version = "2" }
